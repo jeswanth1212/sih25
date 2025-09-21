@@ -86,9 +86,9 @@
   *Action*: Save generated `main.js` and `index.html` in `/frontend`. Update `package.json` with `"start": "electron ."`. Run `npm start` to verify.  
   *Contribution*: Sets up desktop GUI framework.
 
-- [ ] **Task 8: Design Glassmorphism UI**  
+- [x] **Task 8: Design Glassmorphism UI**  
   *Description*: Create a layout with sidebar (inbox, sent, quantum network tabs), email list, and composition area (recipient, subject, content, attachments). Use Tailwind CSS for violet/purple glassmorphism (gradients: `bg-gradient-to-r from-purple-600 to-violet-500`, semi-transparent `bg-opacity-30`, blur `backdrop-blur-md`). Add dropdown for encryption levels: Level 1 (Quantum Secure), Level 2 (Quantum-aided AES), Level 3 (Hybrid PQC), Level 4 (No Quantum Security).  
-  *Prompt*: “Generate Electron index.html with Tailwind CSS for a glassmorphism email client UI in violet/purple, including sidebar, email list, composition area (recipient, subject, content, attachments), and encryption dropdown with options: Level 1 (Quantum Secure), Level 2 (Quantum-aided AES), Level 3 (Hybrid PQC), Level 4 (No Quantum Security).”  
+  *Prompt*: "Generate Electron index.html with Tailwind CSS for a glassmorphism email client UI in violet/purple, including sidebar, email list, composition area (recipient, subject, content, attachments), and encryption dropdown with options: Level 1 (Quantum Secure), Level 2 (Quantum-aided AES), Level 3 (Hybrid PQC), Level 4 (No Quantum Security)."  
   *Action*: Save in `/frontend/index.html`, add Tailwind CDN (`https://cdn.tailwindcss.com`), tweak colors (`purple-600`, `violet-500`) and blur (`backdrop-filter: blur(10px)`).  
   *Contribution*: Creates futuristic UI for judges.
 

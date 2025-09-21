@@ -46,32 +46,75 @@
             overflow: hidden;
         }
         
-        /* Glassmorphism effect */
+        /* Enhanced glassmorphism effects */
         .glass {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 16px;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05));
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(139, 92, 246, 0.15);
+            position: relative;
+            overflow: hidden;
         }
         
         .glass-dark {
-            background: rgba(26, 27, 46, 0.8);
+            background: linear-gradient(135deg, rgba(26, 27, 46, 0.9), rgba(15, 16, 53, 0.8));
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            border-radius: 20px;
+            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.2);
+            position: relative;
+        }
+        
+        .glass-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
             backdrop-filter: blur(15px);
             border: 1px solid rgba(139, 92, 246, 0.3);
             border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(139, 92, 246, 0.1);
+            transition: all 0.3s ease;
         }
         
-        /* Animated background */
+        .glass-card:hover {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.08));
+            border-color: rgba(139, 92, 246, 0.5);
+            box-shadow: 0 12px 40px rgba(139, 92, 246, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        /* Enhanced animated background with flowing effects */
         .quantum-bg {
-            background: linear-gradient(45deg, #667eea, #764ba2, #6366f1, #8b5cf6);
+            background: linear-gradient(135deg, #0f1035 0%, #1a1b2e 25%, #2d1b69 50%, #4338ca 75%, #6366f1 100%);
             background-size: 400% 400%;
-            animation: quantum-gradient 8s ease infinite;
+            animation: quantum-gradient 12s ease infinite;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .quantum-bg::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.3) 0%, transparent 70%),
+                        radial-gradient(circle at 80% 20%, rgba(99, 102, 241, 0.3) 0%, transparent 70%),
+                        radial-gradient(circle at 40% 80%, rgba(168, 85, 247, 0.2) 0%, transparent 70%);
+            animation: quantum-flow 15s ease infinite;
         }
         
         @keyframes quantum-gradient {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
+            0%, 100% { background-position: 0% 50%; }
+            25% { background-position: 100% 50%; }
+            50% { background-position: 100% 100%; }
+            75% { background-position: 0% 100%; }
+        }
+        
+        @keyframes quantum-flow {
+            0%, 100% { opacity: 0.8; transform: translateX(0) translateY(0); }
+            33% { opacity: 1; transform: translateX(20px) translateY(-20px); }
+            66% { opacity: 0.6; transform: translateX(-20px) translateY(20px); }
         }
         
         @keyframes glow {
@@ -228,46 +271,180 @@
             </aside>
             
             <!-- Main Content -->
-            <main class="flex-1 flex flex-col overflow-hidden">
-                <!-- Welcome Section -->
-                <div class="p-8 text-center">
-                    <div class="glass-dark p-8 rounded-2xl max-w-2xl mx-auto">
-                        <div class="animate-float mb-6">
-                            <div class="w-16 h-16 mx-auto rounded-full bg-gradient-to-r from-violet-500 to-purple-600 flex items-center justify-center animate-glow">
-                                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+            <main class="flex-1 flex overflow-hidden">
+                <!-- Email List Panel -->
+                <div class="w-96 border-r border-violet-500/20 flex flex-col">
+                    <!-- Search Bar -->
+                    <div class="p-4">
+                        <div class="glass-card p-3 rounded-xl">
+                            <div class="flex items-center space-x-3">
+                                <svg class="w-5 h-5 text-violet-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                                 </svg>
+                                <input type="text" placeholder="Search quantum-secure emails..." class="bg-transparent text-white placeholder-violet-300 border-none outline-none flex-1">
                             </div>
                         </div>
-                        
-                        <h2 class="text-3xl font-bold text-white mb-4">Welcome to QuMail</h2>
-                        <p class="text-violet-200 text-lg mb-6">
-                            Your quantum-secure email client is ready. Experience unbreakable encryption with our hybrid framework combining QKD, post-quantum cryptography, and classical encryption.
-                        </p>
-                        
-                        <!-- Feature Cards -->
-                        <div class="grid grid-cols-2 gap-4 mt-8">
-                            <div class="glass p-4 rounded-lg text-center">
-                                <div class="w-8 h-8 mx-auto mb-2 rounded-lg bg-green-500/20 flex items-center justify-center">
-                                    <div class="w-2 h-2 rounded-full bg-green-400 animate-quantum-pulse"></div>
+                    </div>
+                    
+                    <!-- Email List -->
+                    <div class="flex-1 overflow-y-auto px-4 pb-4">
+                        <div class="space-y-3">
+                            <!-- Email Item 1 -->
+                            <div class="glass-card p-4 rounded-xl cursor-pointer group">
+                                <div class="flex items-start space-x-3">
+                                    <div class="w-10 h-10 rounded-full bg-gradient-to-r from-violet-500 to-purple-600 flex items-center justify-center text-white font-medium">
+                                        A
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <h3 class="text-white font-medium truncate">Alice Kumar</h3>
+                                            <div class="flex items-center space-x-2">
+                                                <div class="w-2 h-2 rounded-full bg-green-400 animate-quantum-pulse"></div>
+                                                <span class="text-violet-300 text-xs">2m</span>
+                                            </div>
+                                        </div>
+                                        <p class="text-violet-300 text-sm font-medium mb-1">Quantum Key Exchange Confirmation</p>
+                                        <p class="text-violet-400 text-sm truncate">The QKD keys have been successfully exchanged with 0.1% error rate...</p>
+                                        <div class="flex items-center justify-between mt-2">
+                                            <span class="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-300">Level 1: Quantum Secure</span>
+                                            <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.586-6.586a2 2 0 00-2.828-2.828z"></path>
+                                            </svg>
+                                        </div>
+                                    </div>
                                 </div>
-                                <h3 class="text-white font-medium">QKD Active</h3>
-                                <p class="text-violet-300 text-sm">Quantum keys ready</p>
                             </div>
                             
-                            <div class="glass p-4 rounded-lg text-center">
-                                <div class="w-8 h-8 mx-auto mb-2 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                                    <div class="w-2 h-2 rounded-full bg-purple-400 animate-quantum-pulse"></div>
+                            <!-- Email Item 2 -->
+                            <div class="glass-card p-4 rounded-xl cursor-pointer group">
+                                <div class="flex items-start space-x-3">
+                                    <div class="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center text-white font-medium">
+                                        R
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <h3 class="text-white font-medium truncate">Dr. Raj Patel</h3>
+                                            <span class="text-violet-300 text-xs">15m</span>
+                                        </div>
+                                        <p class="text-violet-300 text-sm font-medium mb-1">ISRO Project Updates</p>
+                                        <p class="text-violet-400 text-sm truncate">Latest developments in quantum communication satellite deployment...</p>
+                                        <div class="flex items-center justify-between mt-2">
+                                            <span class="text-xs px-2 py-1 rounded-full bg-purple-500/20 text-purple-300">Level 3: Hybrid PQC</span>
+                                            <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.586-6.586a2 2 0 00-2.828-2.828z"></path>
+                                            </svg>
+                                        </div>
+                                    </div>
                                 </div>
-                                <h3 class="text-white font-medium">192-bit Security</h3>
-                                <p class="text-violet-300 text-sm">Hybrid encryption</p>
+                            </div>
+                            
+                            <!-- Email Item 3 -->
+                            <div class="glass-card p-4 rounded-xl cursor-pointer group">
+                                <div class="flex items-start space-x-3">
+                                    <div class="w-10 h-10 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 flex items-center justify-center text-white font-medium">
+                                        M
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <h3 class="text-white font-medium truncate">Maya Singh</h3>
+                                            <span class="text-violet-300 text-xs">1h</span>
+                                        </div>
+                                        <p class="text-violet-300 text-sm font-medium mb-1">Hackathon Team Coordination</p>
+                                        <p class="text-violet-400 text-sm truncate">Great progress on the QuMail prototype! The quantum encryption is working...</p>
+                                        <div class="flex items-center justify-between mt-2">
+                                            <span class="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-300">Level 2: Quantum-aided AES</span>
+                                            <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.586-6.586a2 2 0 00-2.828-2.828z"></path>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        
-                        <!-- Get Started Button -->
-                        <button class="mt-8 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white py-3 px-8 rounded-lg font-medium transition-all duration-200">
-                            Start Secure Messaging
-                        </button>
+                    </div>
+                </div>
+                
+                <!-- Email Composition/Reading Panel -->
+                <div class="flex-1 flex flex-col">
+                    <!-- Email Composer -->
+                    <div class="p-6">
+                        <div class="glass-card p-6 rounded-2xl">
+                            <div class="flex items-center justify-between mb-6">
+                                <h2 class="text-2xl font-bold text-white">Compose Secure Email</h2>
+                                <div class="flex items-center space-x-4">
+                                    <!-- Encryption Level Selector -->
+                                    <select class="glass-card px-4 py-2 rounded-lg text-white bg-transparent border-none outline-none">
+                                        <option value="1" class="bg-slate-800">Level 1: Quantum Secure</option>
+                                        <option value="2" class="bg-slate-800" selected>Level 2: Quantum-aided AES</option>
+                                        <option value="3" class="bg-slate-800">Level 3: Hybrid PQC</option>
+                                        <option value="4" class="bg-slate-800">Level 4: No Quantum Security</option>
+                                    </select>
+                                    
+                                    <!-- Security Status -->
+                                    <div class="flex items-center space-x-2">
+                                        <div class="w-2 h-2 rounded-full bg-green-400 animate-quantum-pulse"></div>
+                                        <span class="text-green-300 text-sm font-medium">192-bit Secure</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Email Form -->
+                            <div class="space-y-4">
+                                <!-- To Field -->
+                                <div class="glass-card p-4 rounded-xl">
+                                    <div class="flex items-center space-x-3">
+                                        <label class="text-violet-300 font-medium w-16">To:</label>
+                                        <input type="email" placeholder="recipient@example.com" class="bg-transparent text-white placeholder-violet-400 border-none outline-none flex-1">
+                                    </div>
+                                </div>
+                                
+                                <!-- Subject Field -->
+                                <div class="glass-card p-4 rounded-xl">
+                                    <div class="flex items-center space-x-3">
+                                        <label class="text-violet-300 font-medium w-16">Subject:</label>
+                                        <input type="text" placeholder="Enter quantum-secure subject..." class="bg-transparent text-white placeholder-violet-400 border-none outline-none flex-1">
+                                    </div>
+                                </div>
+                                
+                                <!-- Message Body -->
+                                <div class="glass-card p-4 rounded-xl">
+                                    <textarea rows="8" placeholder="Compose your quantum-encrypted message here..." class="w-full bg-transparent text-white placeholder-violet-400 border-none outline-none resize-none"></textarea>
+                                </div>
+                                
+                                <!-- Actions -->
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-4">
+                                        <!-- Attachment Button -->
+                                        <button class="glass-card hover:bg-white/10 p-3 rounded-lg transition-colors">
+                                            <svg class="w-5 h-5 text-violet-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.586-6.586a2 2 0 00-2.828-2.828z"></path>
+                                            </svg>
+                                        </button>
+                                        
+                                        <!-- Voice Message -->
+                                        <button class="glass-card hover:bg-white/10 p-3 rounded-lg transition-colors">
+                                            <svg class="w-5 h-5 text-violet-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
+                                            </svg>
+                                        </button>
+                                        
+                                        <!-- Quantum Key Status -->
+                                        <div class="flex items-center space-x-2 text-sm">
+                                            <div class="w-2 h-2 rounded-full bg-green-400 animate-quantum-pulse"></div>
+                                            <span class="text-green-300">QKD Key Ready</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Send Button -->
+                                    <button class="bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white py-3 px-8 rounded-xl font-medium transition-all duration-200 flex items-center space-x-2 animate-glow">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                                        </svg>
+                                        <span>Send Secure</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </main>
