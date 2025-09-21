@@ -80,9 +80,9 @@
   *Contribution*: Enables cloud storage for keys.
 
 ## Step 2: Frontend GUI Development (Electron with Glassmorphism UI) (~5-7 hours, 1-2 members, Minimal GPU)
-- [ ] **Task 7: Initialize Electron App**  
+- [x] **Task 7: Initialize Electron App**  
   *Description*: Create an Electron project with a main window for the email client.  
-  *Prompt*: “Create an Electron app for Windows with a main window for an email client.”  
+  *Prompt*: "Create an Electron app for Windows with a main window for an email client."  
   *Action*: Save generated `main.js` and `index.html` in `/frontend`. Update `package.json` with `"start": "electron ."`. Run `npm start` to verify.  
   *Contribution*: Sets up desktop GUI framework.
 

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuMail - Quantum Secure Email Client</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Custom Tailwind Configuration -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'quantum-violet': '#6366f1',
+                        'quantum-purple': '#8b5cf6',
+                        'quantum-dark': '#1a1b2e',
+                        'quantum-light': '#e0e7ff'
+                    },
+                    animation: {
+                        'glow': 'glow 2s ease-in-out infinite alternate',
+                        'float': 'float 3s ease-in-out infinite',
+                        'quantum-pulse': 'quantum-pulse 1.5s ease-in-out infinite'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Custom CSS for glassmorphism effects -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-attachment: fixed;
+            overflow: hidden;
+        }
+        
+        /* Glassmorphism effect */
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+        }
+        
+        .glass-dark {
+            background: rgba(26, 27, 46, 0.8);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 16px;
+        }
+        
+        /* Animated background */
+        .quantum-bg {
+            background: linear-gradient(45deg, #667eea, #764ba2, #6366f1, #8b5cf6);
+            background-size: 400% 400%;
+            animation: quantum-gradient 8s ease infinite;
+        }
+        
+        @keyframes quantum-gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        @keyframes glow {
+            from { box-shadow: 0 0 20px rgba(139, 92, 246, 0.5); }
+            to { box-shadow: 0 0 30px rgba(139, 92, 246, 0.8), 0 0 40px rgba(139, 92, 246, 0.3); }
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        @keyframes quantum-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, 0.6);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(139, 92, 246, 0.8);
+        }
+        
+        /* Loading animation */
+        .loading-dots {
+            display: inline-block;
+        }
+        
+        .loading-dots::after {
+            content: '';
+            animation: loading-dots 1.5s infinite;
+        }
+        
+        @keyframes loading-dots {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80%, 100% { content: '...'; }
+        }
+    </style>
+</head>
+<body class="quantum-bg min-h-screen">
+    <!-- Main Application Container -->
+    <div id="app" class="h-screen flex flex-col">
+        <!-- Header -->
+        <header class="glass-dark border-b border-violet-500/30 px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+                <!-- Logo -->
+                <div class="flex items-center space-x-2">
+                    <div class="w-8 h-8 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 flex items-center justify-center animate-glow">
+                        <span class="text-white font-bold text-sm">Q</span>
+                    </div>
+                    <h1 class="text-white text-xl font-bold">QuMail</h1>
+                    <span class="text-violet-300 text-sm">Quantum Secure</span>
+                </div>
+                
+                <!-- Status Indicator -->
+                <div class="flex items-center space-x-2">
+                    <div class="w-2 h-2 rounded-full bg-green-400 animate-quantum-pulse"></div>
+                    <span class="text-green-300 text-sm">Connected</span>
+                </div>
+            </div>
+            
+            <!-- Header Actions -->
+            <div class="flex items-center space-x-4">
+                <!-- Encryption Level Indicator -->
+                <div class="glass px-3 py-1 rounded-full">
+                    <span class="text-violet-300 text-sm">Level 2: Quantum-aided AES</span>
+                </div>
+                
+                <!-- Settings Button -->
+                <button class="glass hover:bg-white/20 p-2 rounded-lg transition-colors">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                </button>
+            </div>
+        </header>
+        
+        <!-- Main Content Area -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Sidebar -->
+            <aside class="w-64 glass-dark border-r border-violet-500/30 p-4 overflow-y-auto">
+                <nav class="space-y-2">
+                    <!-- Compose Button -->
+                    <button class="w-full bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white py-3 px-4 rounded-lg font-medium transition-all duration-200 animate-float">
+                        <div class="flex items-center justify-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                            <span>Compose</span>
+                        </div>
+                    </button>
+                    
+                    <!-- Navigation Items -->
+                    <div class="space-y-1 mt-6">
+                        <a href="#" class="flex items-center space-x-3 p-3 rounded-lg hover:bg-white/10 transition-colors group">
+                            <svg class="w-5 h-5 text-violet-300 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+                            </svg>
+                            <span class="text-white group-hover:text-violet-100">Inbox</span>
+                            <span class="ml-auto bg-violet-500 text-white text-xs px-2 py-1 rounded-full">3</span>
+                        </a>
+                        
+                        <a href="#" class="flex items-center space-x-3 p-3 rounded-lg hover:bg-white/10 transition-colors group">
+                            <svg class="w-5 h-5 text-violet-300 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                            </svg>
+                            <span class="text-white group-hover:text-violet-100">Sent</span>
+                        </a>
+                        
+                        <a href="#" class="flex items-center space-x-3 p-3 rounded-lg hover:bg-white/10 transition-colors group">
+                            <svg class="w-5 h-5 text-violet-300 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
+                            </svg>
+                            <span class="text-white group-hover:text-violet-100">Drafts</span>
+                        </a>
+                        
+                        <a href="#" class="flex items-center space-x-3 p-3 rounded-lg hover:bg-white/10 transition-colors group">
+                            <svg class="w-5 h-5 text-violet-300 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                            <span class="text-white group-hover:text-violet-100">Trash</span>
+                        </a>
+                    </div>
+                    
+                    <!-- Quantum Network Section -->
+                    <div class="mt-8 pt-6 border-t border-violet-500/30">
+                        <h3 class="text-violet-300 text-sm font-medium mb-3">Quantum Network</h3>
+                        <a href="#" class="flex items-center space-x-3 p-3 rounded-lg hover:bg-white/10 transition-colors group">
+                            <div class="w-5 h-5 rounded-full bg-gradient-to-r from-green-400 to-blue-500 animate-quantum-pulse"></div>
+                            <span class="text-white group-hover:text-violet-100">QKD Status</span>
+                        </a>
+                        <a href="#" class="flex items-center space-x-3 p-3 rounded-lg hover:bg-white/10 transition-colors group">
+                            <div class="w-5 h-5 rounded-full bg-gradient-to-r from-purple-400 to-pink-500 animate-quantum-pulse"></div>
+                            <span class="text-white group-hover:text-violet-100">Key Exchange</span>
+                        </a>
+                    </div>
+                </nav>
+            </aside>
+            
+            <!-- Main Content -->
+            <main class="flex-1 flex flex-col overflow-hidden">
+                <!-- Welcome Section -->
+                <div class="p-8 text-center">
+                    <div class="glass-dark p-8 rounded-2xl max-w-2xl mx-auto">
+                        <div class="animate-float mb-6">
+                            <div class="w-16 h-16 mx-auto rounded-full bg-gradient-to-r from-violet-500 to-purple-600 flex items-center justify-center animate-glow">
+                                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        
+                        <h2 class="text-3xl font-bold text-white mb-4">Welcome to QuMail</h2>
+                        <p class="text-violet-200 text-lg mb-6">
+                            Your quantum-secure email client is ready. Experience unbreakable encryption with our hybrid framework combining QKD, post-quantum cryptography, and classical encryption.
+                        </p>
+                        
+                        <!-- Feature Cards -->
+                        <div class="grid grid-cols-2 gap-4 mt-8">
+                            <div class="glass p-4 rounded-lg text-center">
+                                <div class="w-8 h-8 mx-auto mb-2 rounded-lg bg-green-500/20 flex items-center justify-center">
+                                    <div class="w-2 h-2 rounded-full bg-green-400 animate-quantum-pulse"></div>
+                                </div>
+                                <h3 class="text-white font-medium">QKD Active</h3>
+                                <p class="text-violet-300 text-sm">Quantum keys ready</p>
+                            </div>
+                            
+                            <div class="glass p-4 rounded-lg text-center">
+                                <div class="w-8 h-8 mx-auto mb-2 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                                    <div class="w-2 h-2 rounded-full bg-purple-400 animate-quantum-pulse"></div>
+                                </div>
+                                <h3 class="text-white font-medium">192-bit Security</h3>
+                                <p class="text-violet-300 text-sm">Hybrid encryption</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Get Started Button -->
+                        <button class="mt-8 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white py-3 px-8 rounded-lg font-medium transition-all duration-200">
+                            Start Secure Messaging
+                        </button>
+                    </div>
+                </div>
+            </main>
+        </div>
+        
+        <!-- Status Bar -->
+        <footer class="glass-dark border-t border-violet-500/30 px-6 py-2 flex items-center justify-between text-sm">
+            <div class="flex items-center space-x-4">
+                <span class="text-violet-300">Ready</span>
+                <span class="text-violet-500">•</span>
+                <span class="text-violet-300">Firebase Connected</span>
+                <span class="text-violet-500">•</span>
+                <span class="text-violet-300">Python 3.12 Backend</span>
+            </div>
+            
+            <div class="flex items-center space-x-4">
+                <span class="text-violet-300">ISRO SIH 2025</span>
+                <span class="text-violet-500">•</span>
+                <span class="text-violet-300">QuMail v1.0</span>
+            </div>
+        </footer>
+    </div>
+    
+    <!-- Renderer Script -->
+    <script>
+        // QuMail Renderer Process
+        console.log('🚀 QuMail Quantum Secure Email Client - Starting...');
+        
+        // Initialize app when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('✅ QuMail UI Loaded Successfully');
+            
+            // Add subtle animations to elements
+            const cards = document.querySelectorAll('.glass, .glass-dark');
+            cards.forEach((card, index) => {
+                setTimeout(() => {
+                    card.style.opacity = '0';
+                    card.style.transform = 'translateY(20px)';
+                    card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+                    
+                    setTimeout(() => {
+                        card.style.opacity = '1';
+                        card.style.transform = 'translateY(0)';
+                    }, 100);
+                }, index * 100);
+            });
+        });
+        
+        // Handle window resize for responsive design
+        window.addEventListener('resize', () => {
+            // Adjust layout for different screen sizes
+            console.log('Window resized:', window.innerWidth, 'x', window.innerHeight);
+        });
+    </script>
+</body>
+</html>
