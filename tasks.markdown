@@ -92,9 +92,9 @@
   *Action*: Save in `/frontend/index.html`, add Tailwind CDN (`https://cdn.tailwindcss.com`), tweak colors (`purple-600`, `violet-500`) and blur (`backdrop-filter: blur(10px)`).  
   *Contribution*: Creates futuristic UI for judges.
 
-- [ ] **Task 9: Add Starry Background**  
+- [x] **Task 9: Add Starry Background**  
   *Description*: Use a starry, space-themed background with violet/purple gradient overlay.  
-  *Prompt*: “Generate CSS for a starry space background in Electron, styled for ISRO theme with violet/purple accents.”  
+  *Prompt*: "Generate CSS for a starry space background in Electron, styled for ISRO theme with violet/purple accents."  
   *Action*: Download free starry image from Unsplash, save in `/frontend/assets`, add CSS to `index.html` (e.g., `background: url('stars.jpg')` with `bg-gradient-to-b from-purple-800/30`).  
   *Contribution*: Enhances ISRO alignment.
 
