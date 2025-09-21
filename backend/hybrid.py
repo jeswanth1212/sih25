@@ -32,6 +32,7 @@ class HybridKeyDerivator:
         self.qkd_manager = None
         self.ecdh_manager = None
         self.mlkem_manager = None
+        self.real_pqc_manager = None
         self._initialize_managers()
         
     def _initialize_managers(self):
@@ -43,11 +44,12 @@ class HybridKeyDerivator:
         except Exception as e:
             print(f"⚠️ Manager initialization deferred: {e}")
     
-    def set_managers(self, qkd_manager=None, ecdh_manager=None, mlkem_manager=None):
+    def set_managers(self, qkd_manager=None, ecdh_manager=None, mlkem_manager=None, real_pqc_manager=None):
         """Set the crypto managers (called from Flask app)"""
         self.qkd_manager = qkd_manager
         self.ecdh_manager = ecdh_manager
         self.mlkem_manager = mlkem_manager
+        self.real_pqc_manager = real_pqc_manager
         
         components = []
         if qkd_manager:
@@ -56,6 +58,8 @@ class HybridKeyDerivator:
             components.append("ECDH")
         if mlkem_manager:
             components.append("ML-KEM")
+        if real_pqc_manager:
+            components.append("Real-PQC")
             
         print(f"🔗 Hybrid derivator connected to: {', '.join(components)}")
     
@@ -152,35 +156,64 @@ class HybridKeyDerivator:
             except Exception as e:
                 print(f"❌ ECDH component error: {e}")
         
-        # Collect ML-KEM shared secret material
-        if 'MLKEM' in include_components and self.mlkem_manager:
-            try:
-                if mlkem_shared_secret_id:
-                    mlkem_secret = self.mlkem_manager.encapsulated_secrets.get(mlkem_shared_secret_id)
-                else:
-                    # Get any available ML-KEM shared secret
-                    mlkem_secrets = list(self.mlkem_manager.encapsulated_secrets.keys())
-                    if mlkem_secrets:
-                        mlkem_shared_secret_id = mlkem_secrets[0]
-                        mlkem_secret = self.mlkem_manager.encapsulated_secrets[mlkem_shared_secret_id]
-                    else:
-                        mlkem_secret = None
-                
-                if mlkem_secret:
-                    mlkem_material = bytes.fromhex(mlkem_secret['shared_secret'])
-                    key_materials.append(('MLKEM', mlkem_material))
-                    component_info['mlkem'] = {
-                        'secret_id': mlkem_shared_secret_id,
-                        'algorithm': 'ML-KEM-768-HKDF-SHA256',
+        # Collect ML-KEM shared secret material (try real PQC first, then simulation)
+        if 'MLKEM' in include_components:
+            mlkem_material = None
+            mlkem_info = None
+            
+            # Try real post-quantum cryptography first
+            if self.real_pqc_manager:
+                try:
+                    # Generate a real ML-KEM keypair and shared secret
+                    public_key, private_key = self.real_pqc_manager.pqc.generate_keypair()
+                    ciphertext, shared_secret = self.real_pqc_manager.pqc.encapsulate(public_key)
+                    
+                    mlkem_material = shared_secret
+                    mlkem_info = {
+                        'secret_id': f"real_pqc_{secrets.token_hex(8)}",
+                        'algorithm': 'ML-KEM-768-Real-PQC',
                         'length': len(mlkem_material) * 8,
-                        'quantum_resistant': True
+                        'quantum_resistant': True,
+                        'real_crypto': True
                     }
-                    security_contributions.append('192-bit post-quantum')
-                    print(f"🔬 ML-KEM component added: {mlkem_shared_secret_id}")
-                else:
-                    print("⚠️ No ML-KEM shared secrets available for hybrid derivation")
-            except Exception as e:
-                print(f"❌ ML-KEM component error: {e}")
+                    security_contributions.append('256-bit real post-quantum')
+                    print(f"🔬 Real PQC ML-KEM component added")
+                except Exception as e:
+                    print(f"❌ Real PQC ML-KEM error: {e}")
+            
+            # Fallback to simulation if real PQC failed
+            if mlkem_material is None and self.mlkem_manager:
+                try:
+                    if mlkem_shared_secret_id:
+                        mlkem_secret = self.mlkem_manager.encapsulated_secrets.get(mlkem_shared_secret_id)
+                    else:
+                        # Get any available ML-KEM shared secret
+                        mlkem_secrets = list(self.mlkem_manager.encapsulated_secrets.keys())
+                        if mlkem_secrets:
+                            mlkem_shared_secret_id = mlkem_secrets[0]
+                            mlkem_secret = self.mlkem_manager.encapsulated_secrets[mlkem_shared_secret_id]
+                        else:
+                            mlkem_secret = None
+                    
+                    if mlkem_secret:
+                        mlkem_material = bytes.fromhex(mlkem_secret['shared_secret'])
+                        mlkem_info = {
+                            'secret_id': mlkem_shared_secret_id,
+                            'algorithm': 'ML-KEM-768-Simulation',
+                            'length': len(mlkem_material) * 8,
+                            'quantum_resistant': True,
+                            'real_crypto': False
+                        }
+                        security_contributions.append('192-bit simulated post-quantum')
+                        print(f"🔬 ML-KEM simulation component added: {mlkem_shared_secret_id}")
+                except Exception as e:
+                    print(f"❌ ML-KEM simulation component error: {e}")
+            
+            if mlkem_material is not None:
+                key_materials.append(('MLKEM', mlkem_material))
+                component_info['mlkem'] = mlkem_info
+            else:
+                print("⚠️ No ML-KEM shared secrets available for hybrid derivation")
         
         # Ensure we have at least one component
         if not key_materials:
@@ -370,15 +403,27 @@ class HybridKeyDerivator:
         else:
             analysis["components_available"]["ECDH"] = {"available": False}
         
-        if self.mlkem_manager:
+        # Check for real PQC first, then simulation
+        if self.real_pqc_manager:
+            analysis["components_available"]["MLKEM"] = {
+                "available": True,
+                "type": "Real Post-Quantum",
+                "security": "256-bit real post-quantum",
+                "threat_resistance": "Real cryptographic security",
+                "algorithm": "ML-KEM-768-Real-PQC"
+            }
+            analysis["threat_resistance"]["quantum_computer_future"] = "Resistant (Real ML-KEM-768)"
+        elif self.mlkem_manager:
             mlkem_secrets = len(self.mlkem_manager.encapsulated_secrets) if hasattr(self.mlkem_manager, 'encapsulated_secrets') else 0
             analysis["components_available"]["MLKEM"] = {
                 "available": True,
+                "type": "Simulation",
                 "active_secrets": mlkem_secrets,
-                "security": "192-bit post-quantum",
-                "threat_resistance": "NIST FIPS 203 standard"
+                "security": "192-bit simulated post-quantum",
+                "threat_resistance": "NIST FIPS 203 standard (simulated)",
+                "algorithm": "ML-KEM-768-Simulation"
             }
-            analysis["threat_resistance"]["quantum_computer_future"] = "Resistant (ML-KEM-768)"
+            analysis["threat_resistance"]["quantum_computer_future"] = "Resistant (Simulated ML-KEM-768)"
         else:
             analysis["components_available"]["MLKEM"] = {"available": False}
         

@@ -196,14 +196,14 @@
   *Action*: Generate certs, configure Flask in `app.py`.  
   *Contribution*: Secures QKD key delivery.
 
-- [ ] **Task 26: Test API**  
+- [x] **Task 26: Test API**  
   *Description*: Verify ETSI GS QKD 014 key retrieval with curl and pytest.  
   *Prompt*: “Generate pytest and curl commands for testing a Flask ETSI GS QKD 014 API.”  
   *Action*: Save in `/tests/test_qkd.py`, run `pytest`.  
   *Contribution*: Ensures reliable QKD API.
 
 ## Step 5: Backend - Multi-Level Hybrid Encryption Module (~4-5 hours, 1 member, CPU-only)
-- [ ] **Task 27: Create Encryption Module**  
+- [x] **Task 27: Create Encryption Module**  
   *Description*: Set up a modular Python class for encryption (Levels 1-4).  
   *Prompt*: “Generate a Python class for multi-level encryption with Level 1: Quantum Secure (OTP), Level 2: Quantum-aided AES, Level 3: Hybrid PQC, Level 4: No Quantum Security.”  
   *Action*: Save in `/backend/encryption.py`.  

@@ -66,11 +66,15 @@ except Exception as e:
 # Import Hybrid Key Derivation Module
 try:
     from hybrid import create_hybrid_derivator
+    from real_pqc import create_real_pqc_manager
     hybrid_derivator = create_hybrid_derivator()
+    real_pqc_manager = create_real_pqc_manager()
     print("✅ Hybrid Key Derivation Module loaded successfully")
+    print("✅ Real Post-Quantum Cryptography Module loaded successfully")
 except ImportError as e:
     print(f"⚠️ Hybrid Derivation Module not available: {e}")
     hybrid_derivator = None
+    real_pqc_manager = None
 except Exception as e:
     print(f"⚠️ Hybrid Derivation Module initialization error: {e}")
     hybrid_derivator = None
@@ -274,7 +278,8 @@ if hybrid_derivator:
     hybrid_derivator.set_managers(
         qkd_manager=qkd_manager,
         ecdh_manager=ecdh_manager,
-        mlkem_manager=mlkem_manager
+        mlkem_manager=mlkem_manager,
+        real_pqc_manager=real_pqc_manager
     )
     print("🔗 Hybrid derivator connected to all crypto managers")
 
@@ -290,6 +295,7 @@ def home():
             "qkd_available": bb84_simulator is not None,
             "ecdh_available": ecdh_manager is not None,
             "mlkem_available": mlkem_manager is not None,
+            "real_pqc_available": real_pqc_manager is not None,
             "hybrid_available": hybrid_manager is not None,
             "hybrid_derivation_available": hybrid_derivator is not None
         },
