@@ -178,7 +178,7 @@
   *Action*: Save in `/backend/crypto.py`, call from Flask, store shared secret in Firebase.  
   *Contribution*: Adds classical crypto to hybrid.
 
-- [ ] **Task 23: Add ML-KEM-768 Encapsulation**  
+- [x] **Task 23: Add ML-KEM-768 Encapsulation**  
   *Description*: Implement post-quantum key encapsulation (ML-KEM-768).  
   *Prompt*: “Generate Python code for ML-KEM-768 key encapsulation using liboqs-python.”  
   *Action*: Save in `/backend/crypto.py`, combine with QKD/ECDH, store in Firebase.  

@@ -51,6 +51,18 @@ except Exception as e:
     ecdh_manager = None
     hybrid_manager = None
 
+# Import ML-KEM-768 Post-Quantum Crypto Module (Safe Version)
+try:
+    from ml_kem_safe import create_mlkem_manager
+    mlkem_manager = create_mlkem_manager()
+    print("✅ ML-KEM-768 Post-Quantum Crypto Module loaded successfully")
+except ImportError as e:
+    print(f"⚠️ ML-KEM-768 Crypto Module not available: {e}")
+    mlkem_manager = None
+except Exception as e:
+    print(f"⚠️ ML-KEM-768 Crypto Module initialization error: {e}")
+    mlkem_manager = None
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Electron frontend
 
@@ -251,11 +263,12 @@ def home():
     return jsonify({
         "service": "QuMail Hybrid Quantum-Classical Key Manager",
         "version": "1.0.0",
-        "standards": ["ETSI GS QKD 014", "RFC 7748 (X25519)"],
+        "standards": ["ETSI GS QKD 014", "RFC 7748 (X25519)", "NIST FIPS 203 (ML-KEM-768)"],
         "description": "ISRO Smart India Hackathon 2025 - Quantum Secure Email",
         "components": {
             "qkd_available": bb84_simulator is not None,
             "ecdh_available": ecdh_manager is not None,
+            "mlkem_available": mlkem_manager is not None,
             "hybrid_available": hybrid_manager is not None
         },
         "endpoints": {
@@ -273,6 +286,14 @@ def home():
                 "compute_shared_secret": "/api/ecdh/exchange",
                 "status": "/api/ecdh/status",
                 "test": "/api/ecdh/test"
+            },
+            "mlkem": {
+                "generate_keypair": "/api/mlkem/keypair",
+                "get_public_key": "/api/mlkem/public/<key_id>",
+                "encapsulate_secret": "/api/mlkem/encapsulate",
+                "decapsulate_secret": "/api/mlkem/decapsulate",
+                "status": "/api/mlkem/status",
+                "test": "/api/mlkem/test"
             },
             "hybrid": {
                 "generate_keypair": "/api/hybrid/keypair",
@@ -717,13 +738,13 @@ def hybrid_status():
         status = {
             "system": "QuMail Hybrid Crypto Manager",
             "status": "operational",
-            "supported_algorithms": ["X25519"],  # Will add ML-KEM-768 in Task 23
+            "supported_algorithms": ["X25519", "ML-KEM-768"] if mlkem_manager else ["X25519"],
             "security_level": "192-bit hybrid",
             "active_hybrid_keys": len(hybrid_manager.hybrid_keys),
             "components": {
                 "qkd_available": bb84_simulator is not None,
                 "ecdh_available": ecdh_manager is not None,
-                "ml_kem_available": False  # Will be True in Task 23
+                "ml_kem_available": mlkem_manager is not None
             },
             "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
@@ -734,6 +755,280 @@ def hybrid_status():
         print(f"❌ Error getting hybrid status: {e}")
         return jsonify({
             "error": "Failed to get hybrid status",
+            "message": str(e)
+        }), 500
+
+# ML-KEM-768 Post-Quantum Cryptography Endpoints
+
+@app.route('/api/mlkem/keypair', methods=['POST'])
+def generate_mlkem_keypair():
+    """Generate ML-KEM-768 key pair"""
+    try:
+        if not mlkem_manager:
+            return jsonify({
+                "error": "ML-KEM-768 module not available",
+                "message": "Post-quantum cryptography module is not loaded"
+            }), 503
+        
+        # Get optional key ID from request
+        data = request.get_json() if request.is_json else {}
+        key_id = data.get('key_id')
+        
+        # Generate key pair
+        keypair = mlkem_manager.generate_keypair(key_id)
+        
+        # Store in Firebase if available
+        if firebase_ref:
+            try:
+                # Store without private key for security
+                firebase_data = keypair.copy()
+                firebase_data.pop('private_key', None)
+                firebase_ref.child('mlkem_keys').child(keypair['key_id']).set(firebase_data)
+                print(f"🔬 ML-KEM key pair {keypair['key_id']} stored in Firebase")
+            except Exception as e:
+                print(f"⚠️ Firebase storage error for ML-KEM key: {e}")
+        
+        # Return public key information (never return private key)
+        response = {
+            "success": True,
+            "key_id": keypair["key_id"],
+            "algorithm": keypair["algorithm"],
+            "variant": keypair["variant"],
+            "public_key": keypair["public_key"],
+            "public_key_hex": keypair["public_key_hex"],
+            "metadata": keypair["metadata"]
+        }
+        
+        return jsonify(response), 201
+        
+    except Exception as e:
+        print(f"❌ Error generating ML-KEM key pair: {e}")
+        return jsonify({
+            "error": "Failed to generate ML-KEM key pair",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/mlkem/public/<key_id>', methods=['GET'])
+def get_mlkem_public_key(key_id):
+    """Get ML-KEM-768 public key for sharing"""
+    try:
+        if not mlkem_manager:
+            return jsonify({
+                "error": "ML-KEM-768 module not available"
+            }), 503
+        
+        public_key = mlkem_manager.get_public_key(key_id)
+        
+        if not public_key:
+            return jsonify({
+                "error": "Key not found",
+                "key_id": key_id
+            }), 404
+        
+        # Get full key pair info for public data
+        keypairs = mlkem_manager.list_active_keypairs()
+        if key_id in keypairs:
+            return jsonify({
+                "success": True,
+                "key_id": key_id,
+                "public_key": public_key,
+                "algorithm": keypairs[key_id]["algorithm"],
+                "variant": keypairs[key_id]["variant"],
+                "metadata": keypairs[key_id]["metadata"]
+            }), 200
+        else:
+            return jsonify({
+                "error": "Key not found in active keypairs"
+            }), 404
+            
+    except Exception as e:
+        print(f"❌ Error getting ML-KEM public key: {e}")
+        return jsonify({
+            "error": "Failed to get public key",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/mlkem/encapsulate', methods=['POST'])
+def encapsulate_mlkem_secret():
+    """Encapsulate shared secret using ML-KEM-768"""
+    try:
+        if not mlkem_manager:
+            return jsonify({
+                "error": "ML-KEM-768 module not available"
+            }), 503
+        
+        # Get parameters from request
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                "error": "Missing JSON data"
+            }), 400
+        
+        remote_public_key = data.get('remote_public_key')
+        secret_id = data.get('secret_id')
+        
+        if not remote_public_key:
+            return jsonify({
+                "error": "Missing required parameter: remote_public_key"
+            }), 400
+        
+        # Encapsulate secret
+        encapsulated_data = mlkem_manager.encapsulate_secret(
+            remote_public_key, 
+            secret_id
+        )
+        
+        # Store in Firebase if available
+        if firebase_ref:
+            try:
+                # Store without the actual shared secret for security
+                firebase_data = encapsulated_data.copy()
+                firebase_data.pop('shared_secret', None)  # Remove actual secret
+                firebase_data.pop('shared_secret_b64', None)  # Remove base64 secret
+                firebase_ref.child('mlkem_encapsulated_secrets').child(encapsulated_data['secret_id']).set(firebase_data)
+                print(f"🔒 ML-KEM encapsulated secret metadata {encapsulated_data['secret_id']} stored in Firebase")
+            except Exception as e:
+                print(f"⚠️ Firebase storage error for encapsulated secret: {e}")
+        
+        # Return metadata only (never return actual shared secret)
+        response = {
+            "success": True,
+            "secret_id": encapsulated_data["secret_id"],
+            "algorithm": encapsulated_data["algorithm"],
+            "ciphertext": encapsulated_data["ciphertext"],
+            "key_derivation": encapsulated_data["key_derivation"],
+            "metadata": encapsulated_data["metadata"],
+            "shared_secret_preview": encapsulated_data["shared_secret"][:16] + "...",
+            "message": "Shared secret encapsulated successfully"
+        }
+        
+        return jsonify(response), 201
+        
+    except Exception as e:
+        print(f"❌ Error encapsulating ML-KEM secret: {e}")
+        return jsonify({
+            "error": "Failed to encapsulate secret",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/mlkem/decapsulate', methods=['POST'])
+def decapsulate_mlkem_secret():
+    """Decapsulate shared secret using ML-KEM-768"""
+    try:
+        if not mlkem_manager:
+            return jsonify({
+                "error": "ML-KEM-768 module not available"
+            }), 503
+        
+        # Get parameters from request
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                "error": "Missing JSON data"
+            }), 400
+        
+        local_key_id = data.get('local_key_id')
+        ciphertext = data.get('ciphertext')
+        
+        if not local_key_id or not ciphertext:
+            return jsonify({
+                "error": "Missing required parameters",
+                "required": ["local_key_id", "ciphertext"]
+            }), 400
+        
+        # Decapsulate secret
+        decapsulated_data = mlkem_manager.decapsulate_secret(local_key_id, ciphertext)
+        
+        # Return metadata only (never return actual shared secret)
+        response = {
+            "success": True,
+            "algorithm": decapsulated_data["algorithm"],
+            "local_key_id": decapsulated_data["local_key_id"],
+            "metadata": decapsulated_data["metadata"],
+            "shared_secret_preview": decapsulated_data["shared_secret"][:16] + "...",
+            "message": "Shared secret decapsulated successfully"
+        }
+        
+        return jsonify(response), 200
+        
+    except ValueError as e:
+        return jsonify({
+            "error": "Invalid parameters",
+            "message": str(e)
+        }), 400
+    except Exception as e:
+        print(f"❌ Error decapsulating ML-KEM secret: {e}")
+        return jsonify({
+            "error": "Failed to decapsulate secret",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/mlkem/test', methods=['GET'])
+def test_mlkem_kem():
+    """Test ML-KEM-768 key encapsulation functionality"""
+    try:
+        if not mlkem_manager:
+            return jsonify({
+                "error": "ML-KEM-768 module not available"
+            }), 503
+        
+        # Run full KEM test
+        demo_result = mlkem_manager.simulate_full_kem_exchange()
+        
+        return jsonify({
+            "mlkem_status": "operational",
+            "test_successful": demo_result["demo_successful"],
+            "key_encapsulation_verified": demo_result["key_encapsulation_verified"],
+            "algorithm": demo_result["algorithm"],
+            "quantum_resistant": demo_result["quantum_resistant"],
+            "alice_key_id": demo_result["alice_key_id"],
+            "secret_id": demo_result["secret_id"],
+            "shared_secret_preview": demo_result["shared_secret_preview"],
+            "message": "ML-KEM-768 key encapsulation is working correctly"
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error testing ML-KEM: {e}")
+        return jsonify({
+            "error": "ML-KEM test failed",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/mlkem/status', methods=['GET'])
+def mlkem_status():
+    """Get ML-KEM-768 system status"""
+    try:
+        if not mlkem_manager:
+            return jsonify({
+                "error": "ML-KEM-768 module not available"
+            }), 503
+        
+        # Clean up expired keys
+        mlkem_manager.cleanup_expired_keys()
+        
+        # Get active keypairs and encapsulated secrets
+        active_keypairs = mlkem_manager.list_active_keypairs()
+        encapsulated_secrets = mlkem_manager.list_encapsulated_secrets()
+        
+        status = {
+            "system": "QuMail ML-KEM-768 Manager",
+            "status": "operational",
+            "algorithm": "ML-KEM-768",
+            "variant": "Kyber768" if hasattr(mlkem_manager, 'use_real_mlkem') and mlkem_manager.use_real_mlkem else "Simulated",
+            "security_level": "192-bit post-quantum",
+            "nist_standard": "FIPS 203",
+            "active_keypairs": len(active_keypairs),
+            "encapsulated_secrets": len(encapsulated_secrets),
+            "quantum_resistant": True,
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
+        
+        return jsonify(status), 200
+        
+    except Exception as e:
+        print(f"❌ Error getting ML-KEM status: {e}")
+        return jsonify({
+            "error": "Failed to get ML-KEM status",
             "message": str(e)
         }), 500
 

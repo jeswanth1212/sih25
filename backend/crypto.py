@@ -305,7 +305,7 @@ class ECDHKeyExchange:
 class HybridCryptoManager:
     """
     Manager for combining multiple cryptographic methods
-    Prepares for hybrid QKD + ECDH + ML-KEM framework
+    Supports hybrid QKD + ECDH + ML-KEM framework
     """
     
     def __init__(self):
@@ -313,10 +313,21 @@ class HybridCryptoManager:
         self.ecdh = ECDHKeyExchange()
         self.hybrid_keys = {}
         
+        # Try to import ML-KEM manager (safe version)
+        try:
+            from ml_kem_safe import create_mlkem_manager
+            self.mlkem = create_mlkem_manager()
+            self.mlkem_available = True
+            print("🔬 ML-KEM-768 integrated into hybrid manager")
+        except ImportError:
+            self.mlkem = None
+            self.mlkem_available = False
+            print("⚠️ ML-KEM-768 not available for hybrid manager")
+        
     def generate_hybrid_keypair(self, hybrid_id: str = None) -> Dict[str, Any]:
         """
         Generate keys for hybrid encryption
-        Currently supports ECDH, will add ML-KEM in Task 23
+        Supports ECDH + ML-KEM-768 (if available)
         """
         if not hybrid_id:
             timestamp = int(time.time() * 1000)
@@ -325,34 +336,62 @@ class HybridCryptoManager:
         # Generate ECDH key pair
         ecdh_keypair = self.ecdh.generate_keypair(f"{hybrid_id}_ecdh")
         
-        # Prepare hybrid key structure
+        # Prepare algorithm list and components
+        algorithms = ["X25519"]
+        components = ["ECDH/X25519"]
+        
+        # Initialize hybrid key structure
         hybrid_key_data = {
             "hybrid_id": hybrid_id,
-            "algorithms": ["X25519"],  # Will add ML-KEM-768 in Task 23
             "ecdh_key_id": ecdh_keypair["key_id"],
             "ecdh_public_key": ecdh_keypair["public_key"],
+        }
+        
+        # Generate ML-KEM key pair if available
+        if self.mlkem_available and self.mlkem:
+            try:
+                mlkem_keypair = self.mlkem.generate_keypair(f"{hybrid_id}_mlkem")
+                hybrid_key_data["mlkem_key_id"] = mlkem_keypair["key_id"]
+                hybrid_key_data["mlkem_public_key"] = mlkem_keypair["public_key"]
+                algorithms.append("ML-KEM-768")
+                components.append("ML-KEM-768")
+                print(f"🔬 Added ML-KEM-768 to hybrid key: {hybrid_id}")
+            except Exception as e:
+                print(f"⚠️ Failed to add ML-KEM to hybrid key: {e}")
+        
+        # Complete hybrid key structure
+        hybrid_key_data.update({
+            "algorithms": algorithms,
             "metadata": {
                 "created_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
-                "security_level": "192-bit hybrid",
+                "security_level": "192-bit hybrid" if self.mlkem_available else "128-bit hybrid",
                 "status": "active",
-                "components": ["ECDH/X25519"]  # Will add "ML-KEM-768" in Task 23
+                "components": components,
+                "mlkem_available": self.mlkem_available
             }
-        }
+        })
         
         self.hybrid_keys[hybrid_id] = hybrid_key_data
         
-        print(f"🔐 Generated hybrid key pair: {hybrid_id}")
+        print(f"🔐 Generated hybrid key pair: {hybrid_id} with {len(algorithms)} algorithms")
         return hybrid_key_data
     
     def get_hybrid_public_data(self, hybrid_id: str) -> Optional[Dict[str, Any]]:
         """Get public key data for sharing"""
         if hybrid_id in self.hybrid_keys:
-            return {
+            data = {
                 "hybrid_id": hybrid_id,
                 "algorithms": self.hybrid_keys[hybrid_id]["algorithms"],
                 "ecdh_public_key": self.hybrid_keys[hybrid_id]["ecdh_public_key"],
                 "metadata": self.hybrid_keys[hybrid_id]["metadata"]
             }
+            
+            # Include ML-KEM public key if available
+            if "mlkem_public_key" in self.hybrid_keys[hybrid_id]:
+                data["mlkem_public_key"] = self.hybrid_keys[hybrid_id]["mlkem_public_key"]
+                data["mlkem_key_id"] = self.hybrid_keys[hybrid_id]["mlkem_key_id"]
+            
+            return data
         return None
 
 # Factory functions for Flask integration
