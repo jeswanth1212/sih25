@@ -37,33 +37,33 @@
 **Task List**: Check off tasks as completed in Cursor IDE. Each task includes a prompt to generate code and estimated time. Parallelize tasks across team members. Feed this README into Cursor with: “Understand this detailed project overview and task list for QuMail, then assist with each task one by one as I request.”
 
 ## Step 1: Project Setup and Environment Configuration (~1.5-2 hours, 1 member, CPU-only)
-- [ ] **Task 1: Launch Cursor IDE**  
-  *Description*: Open Cursor IDE on a Windows laptop (Intel i5/i7, 8-16 GB RAM, Windows 10/11). Create a new project named “QuMail” in `C:\QuMail`.  
-  *Prompt*: “Create a new project in Cursor IDE for a Python/Node.js quantum email client.”  
-  *Action*: Click “New Project,” select Python/Node.js template, set directory.  
+- [x] **Task 1: Launch Cursor IDE**  
+  *Description*: Open Cursor IDE on a Windows laptop (Intel i5/i7, 8-16 GB RAM, Windows 10/11). Create a new project named "QuMail" in the current directory.  
+  *Prompt*: "Create a new project in Cursor IDE for a Python/Node.js quantum email client."  
+  *Action*: Click "New Project," select Python/Node.js template, set directory.  
   *Contribution*: Initializes development environment.
 
-- [ ] **Task 2: Create Folder Structure**  
+- [x] **Task 2: Create Folder Structure**  
   *Description*: Set up folders: `/frontend` (Electron GUI), `/backend` (Flask, encryption), `/simulator` (QKD), `/tests` (pytest), `/docs` (README).  
-  *Prompt*: “Generate a project folder structure for a quantum email client with frontend, backend, simulator, tests, and docs folders.”  
-  *Action*: Review Cursor’s structure, create folders in File Explorer or IDE.  
+  *Prompt*: "Generate a project folder structure for a quantum email client with frontend, backend, simulator, tests, and docs folders."  
+  *Action*: Review Cursor's structure, create folders in File Explorer or IDE.  
   *Contribution*: Organizes project for modularity.
 
-- [ ] **Task 3: Install Python Dependencies**  
+- [x] **Task 3: Install Python Dependencies**  
   *Description*: Install Python 3.12+, then run `pip install flask cryptography pyOpenSSL qiskit liboqs-python pytest scikit-learn firebase-admin`.  
-  *Prompt*: “Generate requirements.txt for a quantum email client with Flask, Qiskit, cryptography, liboqs-python, pytest, scikit-learn, firebase-admin.”  
+  *Prompt*: "Generate requirements.txt for a quantum email client with Flask, Qiskit, cryptography, liboqs-python, pytest, scikit-learn, firebase-admin."  
   *Action*: Save `requirements.txt` in project root, run `pip install -r requirements.txt`.  
   *Contribution*: Sets up backend dependencies.
 
-- [ ] **Task 4: Install Node.js Dependencies**  
+- [x] **Task 4: Install Node.js Dependencies**  
   *Description*: Install Node.js 18+, run `npm init -y` and `npm install electron three tailwindcss`.  
-  *Prompt*: “Generate package.json for an Electron app with Three.js and Tailwind CSS.”  
+  *Prompt*: "Generate package.json for an Electron app with Three.js and Tailwind CSS."  
   *Action*: Save `package.json`, run `npm install`.  
   *Contribution*: Sets up frontend dependencies.
 
-- [ ] **Task 5: Initialize Git**  
+- [x] **Task 5: Initialize Git**  
   *Description*: Set up version control for team collaboration.  
-  *Prompt*: “Initialize Git repository with .gitignore for Python and Node.js.”  
+  *Prompt*: "Initialize Git repository with .gitignore for Python and Node.js."  
   *Action*: Run `git init`, add `.gitignore` (ignoring `node_modules`, `__pycache__`), commit initial structure.  
   *Contribution*: Enables version control.
 
