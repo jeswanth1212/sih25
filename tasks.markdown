@@ -67,9 +67,9 @@
   *Action*: Run `git init`, add `.gitignore` (ignoring `node_modules`, `__pycache__`), commit initial structure.  
   *Contribution*: Enables version control.
 
-- [ ] **Task 6: Create README Stub**  
-  *Description*: Add a basic README outlining QuMail’s purpose (quantum-secure email with hybrid encryption).  
-  *Prompt*: “Generate a README stub for a quantum email client with hybrid encryption.”  
+- [x] **Task 6: Create README Stub**  
+  *Description*: Add a basic README outlining QuMail's purpose (quantum-secure email with hybrid encryption).  
+  *Prompt*: "Generate a README stub for a quantum email client with hybrid encryption."  
   *Action*: Save as `README.md` in `/docs`.  
   *Contribution*: Documents project purpose.
 
