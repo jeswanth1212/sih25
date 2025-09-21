@@ -60,6 +60,7 @@ class QuantumKeyManager {
             
             // Update UI with new key
             this.displayQuantumKey(qkdResponse);
+            this.updateQKDStatus();
             
             console.log(`✅ Quantum key retrieved from Flask API: ${qkdResponse.key_id}`);
             this.isConnected = true;
@@ -84,6 +85,7 @@ class QuantumKeyManager {
 
             this.keyCache.set(qkdResponse.key_id, qkdResponse);
             this.displayQuantumKey(qkdResponse);
+            this.updateQKDStatus();
             
             return qkdResponse;
         }
@@ -117,6 +119,7 @@ class QuantumKeyManager {
                 
                 // Update UI with new key
                 this.displayQuantumKey(qkdResponse);
+                this.updateQKDStatus();
                 
                 console.log(`✅ NEW quantum key generated via Flask API: ${qkdResponse.key_id}`);
                 this.isConnected = true;
@@ -144,6 +147,7 @@ class QuantumKeyManager {
 
             this.keyCache.set(qkdResponse.key_id, qkdResponse);
             this.displayQuantumKey(qkdResponse);
+            this.updateQKDStatus();
             
             return qkdResponse;
         }
@@ -205,7 +209,7 @@ class QuantumKeyManager {
     }
 
     // Display quantum key in UI with animations
-    displayQuantumKey(qkdData) {
+    displayQuantumKey(qkdData, addToCache = true) {
         const keyContainer = document.getElementById('quantum-keys-display');
         if (!keyContainer) return;
 
@@ -252,19 +256,67 @@ class QuantumKeyManager {
         }
     }
 
-    // Start continuous QKD simulation
+    // Start QKD simulation and sync with backend
     startQKDSimulation() {
-        // Generate initial keys
-        setTimeout(() => this.retrieveQuantumKey(), 1000);
-        setTimeout(() => this.retrieveQuantumKey(), 2500);
-        setTimeout(() => this.retrieveQuantumKey(), 4000);
+        // First, fetch existing keys from backend
+        this.syncWithBackend();
 
-        // Periodic key generation (every 30-60 seconds)
+        // Periodic sync every 30 seconds
         setInterval(() => {
-            if (this.keyCache.size < 5) { // Maintain 5 keys max
-                this.retrieveQuantumKey();
+            this.syncWithBackend();
+        }, 30000);
+    }
+
+    // Sync frontend cache with backend keys
+    async syncWithBackend() {
+        try {
+            console.log('🔄 Syncing QKD keys with Flask backend...');
+            
+            const response = await fetch(`${this.apiBaseUrl}/keys`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-        }, 30000 + Math.random() * 30000);
+            
+            const data = await response.json();
+            console.log(`📦 Backend has ${data.total_keys} keys available`);
+            
+            // Clear local cache and sync with backend
+            this.keyCache.clear();
+            
+            // Add all backend keys to local cache
+            if (data.keys && Array.isArray(data.keys)) {
+                data.keys.forEach(keyData => {
+                    this.keyCache.set(keyData.key_id, keyData);
+                });
+                
+                // Refresh the display to show all keys
+                this.updateKeyDisplay();
+            }
+            
+            // Update displays
+            this.updateQKDStatus();
+            
+            console.log(`✅ Synced ${this.keyCache.size} keys from backend`);
+            this.isConnected = true;
+            
+        } catch (error) {
+            console.error('❌ Failed to sync with backend:', error);
+            this.isConnected = false;
+            
+            // Generate local keys if backend sync fails
+            console.log('⚠️ Falling back to local key generation...');
+            if (this.keyCache.size === 0) {
+                for (let i = 0; i < 3; i++) {
+                    setTimeout(() => this.retrieveQuantumKey(), i * 1000);
+                }
+            }
+        }
     }
 
     // Initialize event listeners
@@ -404,16 +456,15 @@ class QuantumKeyManager {
         const keyContainer = document.getElementById('quantum-keys-display');
         if (!keyContainer) return;
 
-        // Remove consumed keys from display
-        const keyItems = keyContainer.querySelectorAll('.quantum-key-item');
-        keyItems.forEach(item => {
-            const keyId = item.querySelector('.consume-key-btn')?.getAttribute('data-key-id');
-            if (keyId && !this.keyCache.has(keyId)) {
-                item.remove();
-            }
+        // Clear all existing key displays to avoid duplicates
+        keyContainer.innerHTML = '';
+
+        // Display all keys from cache
+        this.keyCache.forEach((keyData, keyId) => {
+            this.displayQuantumKey(keyData, false); // false = don't add to cache again
         });
 
-        // Update the key counter after removing keys
+        // Update the key counter after refresh
         this.updateQKDStatus();
     }
 

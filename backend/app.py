@@ -21,6 +21,21 @@ FIREBASE_CONFIG = Config.FIREBASE_CONFIG
 QKD_CONFIG = Config.QKD_CONFIG
 FLASK_CONFIG = Config.FLASK_CONFIG
 
+# Import BB84 QKD Simulator
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'simulator'))
+try:
+    from qkd import create_bb84_simulator
+    bb84_simulator = create_bb84_simulator()
+    print("✅ BB84 QKD Simulator loaded successfully")
+except ImportError as e:
+    print(f"⚠️ BB84 Simulator not available: {e}")
+    bb84_simulator = None
+except Exception as e:
+    print(f"⚠️ BB84 Simulator initialization error: {e}")
+    bb84_simulator = None
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Electron frontend
 
@@ -59,15 +74,54 @@ class QuantumKeyManager:
         self.key_size_bits = QKD_CONFIG['key_length']
         
     def generate_quantum_key(self):
-        """Generate a 256-bit quantum key with realistic QKD metadata"""
+        """Generate a 256-bit quantum key using BB84 QKD simulation"""
         with key_lock:
+            if bb84_simulator:
+                # Use real BB84 QKD simulation
+                try:
+                    print("🔬 Generating quantum key using BB84 simulation...")
+                    key_data = bb84_simulator.generate_qkd_key(target_length=self.key_size_bits)
+                    
+                    # Validate key security
+                    validation = bb84_simulator.validate_key_security(key_data)
+                    if not validation["is_secure"]:
+                        print(f"⚠️ Key security validation failed: {validation['recommendations']}")
+                        # Generate another key if this one is not secure
+                        key_data = bb84_simulator.generate_qkd_key(target_length=self.key_size_bits)
+                    
+                    # Store in memory
+                    self.active_keys[key_data["key_id"]] = key_data
+                    
+                    # Store in Firebase if available
+                    if firebase_ref:
+                        try:
+                            firebase_ref.child('qkd_keys').child(key_data["key_id"]).set(key_data)
+                            print(f"🔑 BB84 Key {key_data['key_id']} stored in Firebase")
+                        except Exception as e:
+                            print(f"⚠️ Firebase storage error: {e}")
+                    
+                    metadata = key_data["metadata"]
+                    print(f"🔑 Generated BB84 QKD key: {key_data['key_id']} "
+                          f"(Level {metadata['security_level']}, "
+                          f"{metadata['error_rate']*100:.1f}% error, "
+                          f"{metadata['fidelity']:.3f} fidelity)")
+                    
+                    return key_data
+                    
+                except Exception as e:
+                    print(f"❌ BB84 simulation error: {e}")
+                    # Fall back to mock generation if BB84 fails
+            
+            # Fallback to mock generation if BB84 not available
+            print("⚠️ Falling back to mock key generation...")
+            
             # Generate 256-bit key (64 hex characters)
             key_material = secrets.token_hex(32)
             
             # Generate unique key ID
             timestamp = int(time.time() * 1000)
             random_suffix = secrets.randbelow(1000)
-            key_id = f"qkd_{timestamp}_{random_suffix}"
+            key_id = f"qkd_mock_{timestamp}_{random_suffix}"
             
             # Simulate realistic QKD metadata
             error_rate = round(secrets.randbelow(20) / 100.0, 3)  # 0-19% error rate
@@ -95,7 +149,7 @@ class QuantumKeyManager:
                 "metadata": {
                     "length": self.key_size_bits,
                     "error_rate": error_rate,
-                    "protocol": "BB84",
+                    "protocol": "BB84-Mock",
                     "security_level": security_level,
                     "fidelity": fidelity,
                     "distance_km": distance_km,
@@ -112,11 +166,11 @@ class QuantumKeyManager:
             if firebase_ref:
                 try:
                     firebase_ref.child('qkd_keys').child(key_id).set(key_data)
-                    print(f"🔑 Key {key_id} stored in Firebase")
+                    print(f"🔑 Mock Key {key_id} stored in Firebase")
                 except Exception as e:
                     print(f"⚠️ Firebase storage error: {e}")
             
-            print(f"🔑 Generated QKD key: {key_id} (Level {security_level}, {error_rate*100:.1f}% error)")
+            print(f"🔑 Generated Mock QKD key: {key_id} (Level {security_level}, {error_rate*100:.1f}% error)")
             return key_data
     
     def get_available_keys(self):
@@ -164,9 +218,17 @@ class QuantumKeyManager:
 # Initialize QKD Manager
 qkd_manager = QuantumKeyManager()
 
-# Generate initial keys
-for _ in range(3):
-    qkd_manager.generate_quantum_key()
+# Generate initial keys (smaller for faster startup)
+print("🔄 Generating initial QKD keys for startup...")
+for i in range(3):
+    print(f"  Generating key {i+1}/3...")
+    if bb84_simulator:
+        # Generate smaller keys for faster startup
+        key_data = bb84_simulator.generate_qkd_key(target_length=64)  # 64-bit for speed
+        qkd_manager.active_keys[key_data["key_id"]] = key_data
+    else:
+        qkd_manager.generate_quantum_key()
+print("✅ Initial QKD keys generated")
 
 @app.route('/')
 def home():
@@ -307,6 +369,42 @@ def qkd_status():
     except Exception as e:
         print(f"❌ Error getting status: {e}")
         return jsonify({"error": "Failed to get status"}), 500
+
+@app.route('/api/qkd/bb84/test', methods=['GET'])
+def test_bb84_simulator():
+    """Test the BB84 QKD simulator directly"""
+    try:
+        if not bb84_simulator:
+            return jsonify({
+                "error": "BB84 simulator not available",
+                "message": "Qiskit BB84 simulator is not loaded"
+            }), 503
+        
+        # Generate a test key
+        test_key = bb84_simulator.generate_qkd_key(target_length=64)  # Smaller test key
+        validation = bb84_simulator.validate_key_security(test_key)
+        
+        return jsonify({
+            "simulator_status": "operational",
+            "test_key_generated": True,
+            "key_preview": {
+                "key_id": test_key["key_id"],
+                "protocol": test_key["metadata"]["protocol"],
+                "error_rate": test_key["metadata"]["error_rate"],
+                "fidelity": test_key["metadata"]["fidelity"],
+                "security_level": test_key["metadata"]["security_level"],
+                "quantum_parameters": test_key["metadata"].get("quantum_parameters", {})
+            },
+            "security_validation": validation,
+            "message": "BB84 QKD simulator is working correctly"
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error testing BB84 simulator: {e}")
+        return jsonify({
+            "error": "BB84 simulator test failed",
+            "message": str(e)
+        }), 500
 
 @app.errorhandler(404)
 def not_found(error):

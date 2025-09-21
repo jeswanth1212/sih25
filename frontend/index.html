@@ -1001,6 +1001,12 @@
             openQkdBtn?.addEventListener('click', () => {
                 qkdOverlay.classList.remove('hidden');
                 document.body.style.overflow = 'hidden'; // Prevent background scroll
+                
+                // Sync with backend when QKD panel is opened
+                if (window.qkdManager && window.qkdManager.syncWithBackend) {
+                    window.qkdManager.syncWithBackend();
+                    console.log('🔄 QKD Manager opened - syncing with backend...');
+                }
             });
 
             // Close QKD Panel

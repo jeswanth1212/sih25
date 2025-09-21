@@ -166,7 +166,7 @@
   *Action*: Save in `/backend/app.py`, run locally (`flask run`).  
   *Contribution*: Enables ETSI-compliant key delivery.
 
-- [ ] **Task 21: Simulate QKD Keys**  
+- [x] **Task 21: Simulate QKD Keys**  
   *Description*: Use Qiskit for BB84 protocol simulation (256-bit keys with 10-15% error detection).  
   *Prompt*: “Generate Qiskit code for BB84 QKD simulation with 256-bit key output and 10-15% error detection for eavesdropping, formatted for ETSI GS QKD 014 JSON.”  
   *Action*: Save in `/simulator/qkd.py`, integrate with Flask endpoint, store keys in Firebase.  
