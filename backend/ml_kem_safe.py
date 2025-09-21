@@ -57,16 +57,14 @@ class MLKEM768Simulator:
         if not public_key.startswith(b'MLKEM768_PUB_'):
             raise ValueError("Invalid ML-KEM-768 public key format")
         
-        # Generate shared secret and ciphertext
-        shared_secret = secrets.token_bytes(self.shared_secret_size)
-        ciphertext = secrets.token_bytes(self.ciphertext_size)
-        
-        # Add structure to ciphertext
-        ciphertext = b'MLKEM768_CT_' + ciphertext[:self.ciphertext_size-12]
-        
-        # Create deterministic relationship for demo consistency
+        # Create deterministic shared secret from public key
         key_hash = hashlib.sha256(public_key).digest()
-        shared_secret = hashlib.sha256(key_hash + b'shared_secret').digest()
+        shared_secret = hashlib.sha256(key_hash + b'mlkem_shared_secret').digest()
+        
+        # Create deterministic ciphertext that encodes the shared secret
+        # This allows decapsulation to recover the same shared secret
+        ciphertext_base = secrets.token_bytes(self.ciphertext_size - 44)
+        ciphertext = b'MLKEM768_CT_' + key_hash + ciphertext_base
         
         return ciphertext, shared_secret
     
@@ -80,10 +78,11 @@ class MLKEM768Simulator:
         if not ciphertext.startswith(b'MLKEM768_CT_'):
             raise ValueError("Invalid ML-KEM-768 ciphertext format")
         
-        # Simulate deterministic decapsulation
-        priv_hash = hashlib.sha256(private_key).digest()
-        ct_hash = hashlib.sha256(ciphertext).digest()
-        shared_secret = hashlib.sha256(priv_hash + ct_hash + b'decapsulated').digest()
+        # Extract the public key hash from ciphertext (embedded during encapsulation)
+        key_hash = ciphertext[12:44]  # Extract 32 bytes after 'MLKEM768_CT_'
+        
+        # Reproduce the same shared secret that was generated during encapsulation
+        shared_secret = hashlib.sha256(key_hash + b'mlkem_shared_secret').digest()
         
         return shared_secret
 

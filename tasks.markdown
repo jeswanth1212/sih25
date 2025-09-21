@@ -184,7 +184,7 @@
   *Action*: Save in `/backend/crypto.py`, combine with QKD/ECDH, store in Firebase.  
   *Contribution*: Adds PQC to hybrid framework.
 
-- [ ] **Task 24: Derive Hybrid Key**  
+- [x] **Task 24: Derive Hybrid Key**  
   *Description*: Concatenate QKD, ECDH, and ML-KEM shared secrets, derive 256-bit key with KDF2 SHA-256.  
   *Prompt*: “Generate Python code to concatenate QKD, ECDH, ML-KEM keys and derive a 256-bit key with KDF2 SHA-256, storing in Firebase.”  
   *Action*: Add to `/backend/crypto.py`, test key length.  

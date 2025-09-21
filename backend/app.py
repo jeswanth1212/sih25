@@ -63,6 +63,18 @@ except Exception as e:
     print(f"⚠️ ML-KEM-768 Crypto Module initialization error: {e}")
     mlkem_manager = None
 
+# Import Hybrid Key Derivation Module
+try:
+    from hybrid import create_hybrid_derivator
+    hybrid_derivator = create_hybrid_derivator()
+    print("✅ Hybrid Key Derivation Module loaded successfully")
+except ImportError as e:
+    print(f"⚠️ Hybrid Derivation Module not available: {e}")
+    hybrid_derivator = None
+except Exception as e:
+    print(f"⚠️ Hybrid Derivation Module initialization error: {e}")
+    hybrid_derivator = None
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Electron frontend
 
@@ -257,6 +269,15 @@ for i in range(3):
         qkd_manager.generate_quantum_key()
 print("✅ Initial QKD keys generated")
 
+# Connect all managers to the hybrid derivator
+if hybrid_derivator:
+    hybrid_derivator.set_managers(
+        qkd_manager=qkd_manager,
+        ecdh_manager=ecdh_manager,
+        mlkem_manager=mlkem_manager
+    )
+    print("🔗 Hybrid derivator connected to all crypto managers")
+
 @app.route('/')
 def home():
     """API Information"""
@@ -269,7 +290,8 @@ def home():
             "qkd_available": bb84_simulator is not None,
             "ecdh_available": ecdh_manager is not None,
             "mlkem_available": mlkem_manager is not None,
-            "hybrid_available": hybrid_manager is not None
+            "hybrid_available": hybrid_manager is not None,
+            "hybrid_derivation_available": hybrid_derivator is not None
         },
         "endpoints": {
             "qkd": {
@@ -298,6 +320,13 @@ def home():
             "hybrid": {
                 "generate_keypair": "/api/hybrid/keypair",
                 "status": "/api/hybrid/status"
+            },
+            "hybrid_derivation": {
+                "derive_key": "/api/hybrid/derive",
+                "get_key": "/api/hybrid/key/<key_id>",
+                "list_keys": "/api/hybrid/keys",
+                "security_analysis": "/api/hybrid/security",
+                "test_derivation": "/api/hybrid/test"
             }
         }
     })
@@ -1029,6 +1058,181 @@ def mlkem_status():
         print(f"❌ Error getting ML-KEM status: {e}")
         return jsonify({
             "error": "Failed to get ML-KEM status",
+            "message": str(e)
+        }), 500
+
+# Hybrid Key Derivation Endpoints
+
+@app.route('/api/hybrid/derive', methods=['POST'])
+def derive_hybrid_key():
+    """Derive a hybrid key from QKD + ECDH + ML-KEM components"""
+    try:
+        if not hybrid_derivator:
+            return jsonify({
+                "error": "Hybrid derivation module not available"
+            }), 503
+        
+        # Get parameters from request
+        data = request.get_json() if request.is_json else {}
+        qkd_key_id = data.get('qkd_key_id')
+        ecdh_shared_secret_id = data.get('ecdh_shared_secret_id')
+        mlkem_shared_secret_id = data.get('mlkem_shared_secret_id')
+        hybrid_key_id = data.get('hybrid_key_id')
+        include_components = data.get('include_components', ['QKD', 'ECDH', 'MLKEM'])
+        
+        # Derive hybrid key
+        hybrid_key = hybrid_derivator.derive_hybrid_key(
+            qkd_key_id=qkd_key_id,
+            ecdh_shared_secret_id=ecdh_shared_secret_id,
+            mlkem_shared_secret_id=mlkem_shared_secret_id,
+            hybrid_key_id=hybrid_key_id,
+            include_components=include_components
+        )
+        
+        # Store in Firebase if available
+        if firebase_ref:
+            try:
+                # Store without the actual derived key for security
+                firebase_data = hybrid_key.copy()
+                firebase_data.pop('derived_key', None)
+                firebase_ref.child('hybrid_derived_keys').child(hybrid_key['hybrid_key_id']).set(firebase_data)
+                print(f"🔐 Hybrid key metadata {hybrid_key['hybrid_key_id']} stored in Firebase")
+            except Exception as e:
+                print(f"⚠️ Firebase storage error for hybrid key: {e}")
+        
+        # Return metadata only (never return actual derived key)
+        response = {
+            "success": True,
+            "hybrid_key_id": hybrid_key["hybrid_key_id"],
+            "algorithm": hybrid_key["algorithm"],
+            "security_level": hybrid_key["security_level"],
+            "security_description": hybrid_key["security_description"],
+            "components": hybrid_key["components"],
+            "security_contributions": hybrid_key["security_contributions"],
+            "key_length": hybrid_key["key_length"],
+            "component_info": hybrid_key["component_info"],
+            "metadata": hybrid_key["metadata"],
+            "derived_key_preview": hybrid_key["derived_key"][:16] + "...",
+            "message": "Hybrid key derived successfully"
+        }
+        
+        return jsonify(response), 201
+        
+    except ValueError as e:
+        return jsonify({
+            "error": "Invalid parameters or insufficient components",
+            "message": str(e)
+        }), 400
+    except Exception as e:
+        print(f"❌ Error deriving hybrid key: {e}")
+        return jsonify({
+            "error": "Failed to derive hybrid key",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/hybrid/key/<key_id>', methods=['GET'])
+def get_hybrid_key(key_id):
+    """Get hybrid key by ID (without the actual key material)"""
+    try:
+        if not hybrid_derivator:
+            return jsonify({
+                "error": "Hybrid derivation module not available"
+            }), 503
+        
+        hybrid_key = hybrid_derivator.get_hybrid_key(key_id)
+        
+        if not hybrid_key:
+            return jsonify({
+                "error": "Hybrid key not found",
+                "key_id": key_id
+            }), 404
+        
+        return jsonify({
+            "success": True,
+            **hybrid_key
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error getting hybrid key: {e}")
+        return jsonify({
+            "error": "Failed to get hybrid key",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/hybrid/keys', methods=['GET'])
+def list_hybrid_keys():
+    """List all hybrid keys (without the actual key material)"""
+    try:
+        if not hybrid_derivator:
+            return jsonify({
+                "error": "Hybrid derivation module not available"
+            }), 503
+        
+        # Clean up expired keys
+        hybrid_derivator.cleanup_expired_keys()
+        
+        hybrid_keys = hybrid_derivator.list_hybrid_keys()
+        
+        return jsonify({
+            "success": True,
+            "hybrid_keys": hybrid_keys,
+            "count": len(hybrid_keys),
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error listing hybrid keys: {e}")
+        return jsonify({
+            "error": "Failed to list hybrid keys",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/hybrid/security', methods=['GET'])
+def hybrid_security_analysis():
+    """Get hybrid system security analysis"""
+    try:
+        if not hybrid_derivator:
+            return jsonify({
+                "error": "Hybrid derivation module not available"
+            }), 503
+        
+        analysis = hybrid_derivator.get_security_analysis()
+        
+        return jsonify({
+            "success": True,
+            **analysis,
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error getting security analysis: {e}")
+        return jsonify({
+            "error": "Failed to get security analysis",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/hybrid/test', methods=['GET'])
+def test_hybrid_derivation():
+    """Test hybrid key derivation functionality"""
+    try:
+        if not hybrid_derivator:
+            return jsonify({
+                "error": "Hybrid derivation module not available"
+            }), 503
+        
+        # Run full hybrid derivation test
+        demo_result = hybrid_derivator.generate_full_hybrid_demo()
+        
+        return jsonify({
+            "hybrid_derivation_status": "operational",
+            **demo_result,
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error testing hybrid derivation: {e}")
+        return jsonify({
+            "error": "Hybrid derivation test failed",
             "message": str(e)
         }), 500
 
