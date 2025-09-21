@@ -1,0 +1,30 @@
+# QuMail API Testing Requirements
+# ISRO Smart India Hackathon 2025
+
+# Core testing framework
+pytest>=7.4.0
+pytest-html>=3.2.0
+pytest-json-report>=1.5.0
+pytest-timeout>=2.1.0
+pytest-xdist>=3.3.0
+
+# HTTP testing
+requests>=2.31.0
+urllib3>=2.0.0
+
+# Test utilities
+pytest-mock>=3.11.0
+pytest-cov>=4.1.0
+pytest-benchmark>=4.0.0
+
+# Reporting and documentation
+pytest-html>=3.2.0
+pytest-json-report>=1.5.0
+allure-pytest>=2.13.0
+
+# Security testing
+pytest-security>=0.1.0
+
+# Performance testing
+pytest-benchmark>=4.0.0
+pytest-timeout>=2.1.0
