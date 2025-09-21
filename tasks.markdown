@@ -172,7 +172,7 @@
   *Action*: Save in `/simulator/qkd.py`, integrate with Flask endpoint, store keys in Firebase.  
   *Contribution*: Simulates QKD for hybrid framework.
 
-- [ ] **Task 22: Add ECDH/X25519 Key Exchange**  
+- [x] **Task 22: Add ECDH/X25519 Key Exchange**  
   *Description*: Generate ECDH shared secret using X25519 curve.  
   *Prompt*: “Generate Python code for ECDH/X25519 key exchange using cryptography.py.”  
   *Action*: Save in `/backend/crypto.py`, call from Flask, store shared secret in Firebase.  

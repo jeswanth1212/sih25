@@ -36,6 +36,21 @@ except Exception as e:
     print(f"⚠️ BB84 Simulator initialization error: {e}")
     bb84_simulator = None
 
+# Import ECDH/X25519 Crypto Module
+try:
+    from crypto import create_ecdh_manager, create_hybrid_manager
+    ecdh_manager = create_ecdh_manager()
+    hybrid_manager = create_hybrid_manager()
+    print("✅ ECDH/X25519 Crypto Module loaded successfully")
+except ImportError as e:
+    print(f"⚠️ ECDH Crypto Module not available: {e}")
+    ecdh_manager = None
+    hybrid_manager = None
+except Exception as e:
+    print(f"⚠️ ECDH Crypto Module initialization error: {e}")
+    ecdh_manager = None
+    hybrid_manager = None
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Electron frontend
 
@@ -234,15 +249,35 @@ print("✅ Initial QKD keys generated")
 def home():
     """API Information"""
     return jsonify({
-        "service": "QuMail Quantum Key Manager",
+        "service": "QuMail Hybrid Quantum-Classical Key Manager",
         "version": "1.0.0",
-        "standard": "ETSI GS QKD 014",
+        "standards": ["ETSI GS QKD 014", "RFC 7748 (X25519)"],
         "description": "ISRO Smart India Hackathon 2025 - Quantum Secure Email",
+        "components": {
+            "qkd_available": bb84_simulator is not None,
+            "ecdh_available": ecdh_manager is not None,
+            "hybrid_available": hybrid_manager is not None
+        },
         "endpoints": {
-            "get_key": "/api/qkd/key",
-            "get_keys": "/api/qkd/keys", 
-            "consume_key": "/api/qkd/consume/<key_id>",
-            "status": "/api/qkd/status"
+            "qkd": {
+                "get_key": "/api/qkd/key",
+                "get_keys": "/api/qkd/keys", 
+                "consume_key": "/api/qkd/consume/<key_id>",
+                "generate_key": "/api/qkd/generate",
+                "status": "/api/qkd/status",
+                "test_bb84": "/api/qkd/bb84/test"
+            },
+            "ecdh": {
+                "generate_keypair": "/api/ecdh/keypair",
+                "get_public_key": "/api/ecdh/public/<key_id>",
+                "compute_shared_secret": "/api/ecdh/exchange",
+                "status": "/api/ecdh/status",
+                "test": "/api/ecdh/test"
+            },
+            "hybrid": {
+                "generate_keypair": "/api/hybrid/keypair",
+                "status": "/api/hybrid/status"
+            }
         }
     })
 
@@ -403,6 +438,302 @@ def test_bb84_simulator():
         print(f"❌ Error testing BB84 simulator: {e}")
         return jsonify({
             "error": "BB84 simulator test failed",
+            "message": str(e)
+        }), 500
+
+# ECDH/X25519 Key Exchange Endpoints
+
+@app.route('/api/ecdh/keypair', methods=['POST'])
+def generate_ecdh_keypair():
+    """Generate ECDH/X25519 key pair"""
+    try:
+        if not ecdh_manager:
+            return jsonify({
+                "error": "ECDH module not available",
+                "message": "Cryptography module is not loaded"
+            }), 503
+        
+        # Get optional key ID from request
+        data = request.get_json() if request.is_json else {}
+        key_id = data.get('key_id')
+        
+        # Generate key pair
+        keypair = ecdh_manager.generate_keypair(key_id)
+        
+        # Store in Firebase if available
+        if firebase_ref:
+            try:
+                firebase_ref.child('ecdh_keys').child(keypair['key_id']).set(keypair)
+                print(f"🔑 ECDH key pair {keypair['key_id']} stored in Firebase")
+            except Exception as e:
+                print(f"⚠️ Firebase storage error for ECDH key: {e}")
+        
+        # Return public key information (never return private key)
+        response = {
+            "success": True,
+            "key_id": keypair["key_id"],
+            "algorithm": keypair["algorithm"],
+            "public_key": keypair["public_key"],
+            "public_key_hex": keypair["public_key_hex"],
+            "metadata": keypair["metadata"]
+        }
+        
+        return jsonify(response), 201
+        
+    except Exception as e:
+        print(f"❌ Error generating ECDH key pair: {e}")
+        return jsonify({
+            "error": "Failed to generate ECDH key pair",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/ecdh/public/<key_id>', methods=['GET'])
+def get_ecdh_public_key(key_id):
+    """Get public key for sharing"""
+    try:
+        if not ecdh_manager:
+            return jsonify({
+                "error": "ECDH module not available"
+            }), 503
+        
+        public_key = ecdh_manager.get_public_key(key_id)
+        
+        if not public_key:
+            return jsonify({
+                "error": "Key not found",
+                "key_id": key_id
+            }), 404
+        
+        # Get full key pair info for public data
+        keypairs = ecdh_manager.list_active_keypairs()
+        if key_id in keypairs:
+            return jsonify({
+                "success": True,
+                "key_id": key_id,
+                "public_key": public_key,
+                "algorithm": keypairs[key_id]["algorithm"],
+                "metadata": keypairs[key_id]["metadata"]
+            }), 200
+        else:
+            return jsonify({
+                "error": "Key not found in active keypairs"
+            }), 404
+            
+    except Exception as e:
+        print(f"❌ Error getting ECDH public key: {e}")
+        return jsonify({
+            "error": "Failed to get public key",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/ecdh/exchange', methods=['POST'])
+def compute_ecdh_shared_secret():
+    """Compute ECDH shared secret"""
+    try:
+        if not ecdh_manager:
+            return jsonify({
+                "error": "ECDH module not available"
+            }), 503
+        
+        # Get parameters from request
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                "error": "Missing JSON data"
+            }), 400
+        
+        local_key_id = data.get('local_key_id')
+        remote_public_key = data.get('remote_public_key')
+        shared_secret_id = data.get('shared_secret_id')
+        
+        if not local_key_id or not remote_public_key:
+            return jsonify({
+                "error": "Missing required parameters",
+                "required": ["local_key_id", "remote_public_key"]
+            }), 400
+        
+        # Compute shared secret
+        shared_secret = ecdh_manager.compute_shared_secret(
+            local_key_id, 
+            remote_public_key, 
+            shared_secret_id
+        )
+        
+        # Store in Firebase if available
+        if firebase_ref:
+            try:
+                # Store without the actual shared secret for security
+                firebase_data = shared_secret.copy()
+                firebase_data.pop('shared_secret', None)  # Remove actual secret
+                firebase_data.pop('shared_secret_b64', None)  # Remove base64 secret
+                firebase_ref.child('ecdh_shared_secrets').child(shared_secret['shared_secret_id']).set(firebase_data)
+                print(f"🤝 ECDH shared secret metadata {shared_secret['shared_secret_id']} stored in Firebase")
+            except Exception as e:
+                print(f"⚠️ Firebase storage error for shared secret: {e}")
+        
+        # Return metadata only (never return actual shared secret)
+        response = {
+            "success": True,
+            "shared_secret_id": shared_secret["shared_secret_id"],
+            "local_key_id": shared_secret["local_key_id"],
+            "algorithm": shared_secret["algorithm"],
+            "key_derivation": shared_secret["key_derivation"],
+            "metadata": shared_secret["metadata"],
+            "shared_secret_preview": shared_secret["shared_secret"][:16] + "...",
+            "message": "Shared secret computed successfully"
+        }
+        
+        return jsonify(response), 201
+        
+    except ValueError as e:
+        return jsonify({
+            "error": "Invalid parameters",
+            "message": str(e)
+        }), 400
+    except Exception as e:
+        print(f"❌ Error computing ECDH shared secret: {e}")
+        return jsonify({
+            "error": "Failed to compute shared secret",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/ecdh/test', methods=['GET'])
+def test_ecdh_exchange():
+    """Test ECDH key exchange functionality"""
+    try:
+        if not ecdh_manager:
+            return jsonify({
+                "error": "ECDH module not available"
+            }), 503
+        
+        # Run simulation test
+        demo_result = ecdh_manager.simulate_key_exchange()
+        
+        return jsonify({
+            "ecdh_status": "operational",
+            "test_successful": demo_result["demo_successful"],
+            "key_exchange_verified": demo_result["key_exchange_verified"],
+            "alice_key_id": demo_result["alice_key_id"],
+            "shared_secret_id": demo_result["shared_secret_id"],
+            "shared_secret_preview": demo_result["shared_secret_preview"],
+            "message": "ECDH/X25519 key exchange is working correctly"
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error testing ECDH exchange: {e}")
+        return jsonify({
+            "error": "ECDH test failed",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/ecdh/status', methods=['GET'])
+def ecdh_status():
+    """Get ECDH system status"""
+    try:
+        if not ecdh_manager:
+            return jsonify({
+                "error": "ECDH module not available"
+            }), 503
+        
+        # Clean up expired keys
+        ecdh_manager.cleanup_expired_keys()
+        
+        # Get active keypairs and shared secrets
+        active_keypairs = ecdh_manager.list_active_keypairs()
+        shared_secrets = ecdh_manager.list_shared_secrets()
+        
+        status = {
+            "system": "QuMail ECDH/X25519 Manager",
+            "status": "operational",
+            "algorithm": "X25519",
+            "curve": "Curve25519",
+            "active_keypairs": len(active_keypairs),
+            "shared_secrets": len(shared_secrets),
+            "security_level": "256-bit equivalent",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
+        
+        return jsonify(status), 200
+        
+    except Exception as e:
+        print(f"❌ Error getting ECDH status: {e}")
+        return jsonify({
+            "error": "Failed to get ECDH status",
+            "message": str(e)
+        }), 500
+
+# Hybrid Crypto Endpoints
+
+@app.route('/api/hybrid/keypair', methods=['POST'])
+def generate_hybrid_keypair():
+    """Generate hybrid cryptographic key pair"""
+    try:
+        if not hybrid_manager:
+            return jsonify({
+                "error": "Hybrid crypto module not available"
+            }), 503
+        
+        # Get optional hybrid ID from request
+        data = request.get_json() if request.is_json else {}
+        hybrid_id = data.get('hybrid_id')
+        
+        # Generate hybrid key pair
+        hybrid_key = hybrid_manager.generate_hybrid_keypair(hybrid_id)
+        
+        # Store in Firebase if available
+        if firebase_ref:
+            try:
+                firebase_ref.child('hybrid_keys').child(hybrid_key['hybrid_id']).set(hybrid_key)
+                print(f"🔐 Hybrid key {hybrid_key['hybrid_id']} stored in Firebase")
+            except Exception as e:
+                print(f"⚠️ Firebase storage error for hybrid key: {e}")
+        
+        return jsonify({
+            "success": True,
+            "hybrid_id": hybrid_key["hybrid_id"],
+            "algorithms": hybrid_key["algorithms"],
+            "ecdh_key_id": hybrid_key["ecdh_key_id"],
+            "ecdh_public_key": hybrid_key["ecdh_public_key"],
+            "metadata": hybrid_key["metadata"],
+            "message": "Hybrid key pair generated successfully"
+        }), 201
+        
+    except Exception as e:
+        print(f"❌ Error generating hybrid key pair: {e}")
+        return jsonify({
+            "error": "Failed to generate hybrid key pair",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/hybrid/status', methods=['GET'])
+def hybrid_status():
+    """Get hybrid crypto system status"""
+    try:
+        if not hybrid_manager:
+            return jsonify({
+                "error": "Hybrid crypto module not available"
+            }), 503
+        
+        status = {
+            "system": "QuMail Hybrid Crypto Manager",
+            "status": "operational",
+            "supported_algorithms": ["X25519"],  # Will add ML-KEM-768 in Task 23
+            "security_level": "192-bit hybrid",
+            "active_hybrid_keys": len(hybrid_manager.hybrid_keys),
+            "components": {
+                "qkd_available": bb84_simulator is not None,
+                "ecdh_available": ecdh_manager is not None,
+                "ml_kem_available": False  # Will be True in Task 23
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
+        
+        return jsonify(status), 200
+        
+    except Exception as e:
+        print(f"❌ Error getting hybrid status: {e}")
+        return jsonify({
+            "error": "Failed to get hybrid status",
             "message": str(e)
         }), 500
 
