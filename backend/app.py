@@ -1245,14 +1245,33 @@ def internal_error(error):
     return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == '__main__':
-    print("🚀 Starting QuMail QKD Manager...")
-    print(f"📡 ETSI GS QKD 014 Compliant API")
-    print(f"🔑 Key size: {QKD_CONFIG['key_length']} bits")
-    print(f"📊 Max keys: 10")
-    print(f"🌐 Server: http://localhost:{FLASK_CONFIG['port']}")
+    import argparse
     
-    app.run(
-        host=FLASK_CONFIG['host'],
-        port=FLASK_CONFIG['port'],
-        debug=FLASK_CONFIG['debug']
-    )
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='QuMail QKD Manager')
+    parser.add_argument('--mtls', action='store_true', help='Enable mTLS authentication')
+    parser.add_argument('--mtls-port', type=int, default=5443, help='mTLS port (default: 5443)')
+    args = parser.parse_args()
+    
+    if args.mtls:
+        print("🔐 Starting QuMail QKD Manager with mTLS...")
+        print("📡 ETSI GS QKD 014 Compliant API (mTLS Secured)")
+        print(f"🔑 Key size: {QKD_CONFIG['key_length']} bits")
+        print(f"📊 Max keys: 10")
+        print(f"🌐 Server: https://localhost:{args.mtls_port} (mTLS)")
+        
+        # Import and configure mTLS
+        from mtls_config import run_mtls_server
+        run_mtls_server(app, host=FLASK_CONFIG['host'], port=args.mtls_port)
+    else:
+        print("🚀 Starting QuMail QKD Manager...")
+        print(f"📡 ETSI GS QKD 014 Compliant API")
+        print(f"🔑 Key size: {QKD_CONFIG['key_length']} bits")
+        print(f"📊 Max keys: 10")
+        print(f"🌐 Server: http://localhost:{FLASK_CONFIG['port']}")
+        
+        app.run(
+            host=FLASK_CONFIG['host'],
+            port=FLASK_CONFIG['port'],
+            debug=FLASK_CONFIG['debug']
+        )

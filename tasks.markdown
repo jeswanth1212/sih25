@@ -190,7 +190,7 @@
   *Action*: Add to `/backend/crypto.py`, test key length.  
   *Contribution*: Creates novel hybrid key.
 
-- [ ] **Task 25: Add mTLS Authentication**  
+- [x] **Task 25: Add mTLS Authentication**  
   *Description*: Secure Flask API with mTLS (self-signed certificates for demo).  
   *Prompt*: “Generate Flask code with mTLS authentication using pyOpenSSL for an ETSI GS QKD 014 API.”  
   *Action*: Generate certs, configure Flask in `app.py`.  
