@@ -117,13 +117,13 @@
   *Contribution*: Ensures functional GUI for demo.
 
 ## Step 3: Exaggerated Frontend Features (~5-7 hours, 1-2 members, Minimal GPU)
-- [ ] **Task 13: Hybrid Key Visualization (Three.js)**  
+- [x] **Task 13: Hybrid Key Visualization (Three.js)**  
   *Description*: Create a Three.js animation showing QKD (green particles), ML-KEM (purple particles), and ECDH (blue particles) merging into a violet “super-key” on a glassmorphism card.  
   *Prompt*: “Generate Three.js animation in Electron for hybrid QKD-ML-KEM-ECDH key derivation, with green (QKD), purple (ML-KEM), blue (ECDH) particles merging into a violet key, styled with glassmorphism.”  
   *Action*: Add Three.js CDN to `index.html`, create canvas, write animation in `/frontend/renderer.js` (1000 particles, 30-60 FPS). Tweak for violet/purple glow.  
   *Contribution*: Visualizes novel hybrid encryption.
 
-- [ ] **Task 14: Security Gauge**  
+- [x] **Task 14: Security Gauge**  
   *Description*: Add a violet/purple glassmorphism gauge showing “Hybrid Strength: 192-bit” (green for Level 1, blue for Level 2, purple for Level 3).  
   *Prompt*: “Create Tailwind CSS gauge in Electron for hybrid encryption levels (Level 1: Quantum Secure, Level 2: Quantum-aided AES, Level 3: Hybrid PQC), styled with violet/purple glassmorphism, showing 192-bit strength.”  
   *Action*: Add HTML/CSS to `index.html`, JavaScript in `renderer.js` to update gauge based on dropdown.  

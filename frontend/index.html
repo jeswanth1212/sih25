@@ -798,6 +798,46 @@
                                     </button>
                                 </div>
                             </div>
+                            
+                            <!-- Security Strength Gauge -->
+                            <div class="mt-6 pt-6 border-t border-violet-500/20">
+                                <div id="security-gauge" class="glass-card p-4 border border-violet-500/30 rounded-xl">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <h4 class="text-sm font-semibold text-violet-300 flex items-center space-x-2">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.031 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                                            </svg>
+                                            <span>Hybrid Security Strength</span>
+                                        </h4>
+                                        <span id="bit-strength" class="text-xs text-gray-300 font-mono">192-bit</span>
+                                    </div>
+                                    
+                                    <!-- Gauge Bar -->
+                                    <div class="relative mb-3">
+                                        <div class="w-full bg-gray-700/50 rounded-full h-3 overflow-hidden">
+                                            <div id="security-bar" class="h-3 rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-blue-400 to-blue-500" style="width: 85%">
+                                                <div class="h-full w-full animate-pulse bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Gauge Markers -->
+                                        <div class="flex justify-between mt-1 text-xs">
+                                            <span class="text-gray-500">0%</span>
+                                            <span class="text-gray-400">50%</span>
+                                            <span class="text-violet-300">100%</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Security Level Description -->
+                                    <div id="security-description" class="flex items-center justify-between">
+                                        <div class="flex items-center space-x-2">
+                                            <div id="security-indicator" class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+                                            <span id="security-text" class="text-blue-300 text-sm font-medium">Level 2: Quantum-aided AES</span>
+                                        </div>
+                                        <span id="security-details" class="text-xs text-gray-400">QKD + AES-256</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

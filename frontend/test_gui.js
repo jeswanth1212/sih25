@@ -44,28 +44,78 @@ class QuMailGUITester {
     }
 
     addTestControls() {
-        // Create test control panel
-        const testPanel = document.createElement('div');
-        testPanel.className = 'fixed bottom-4 right-4 glass-dark p-4 rounded-xl z-40';
-        testPanel.innerHTML = `
-            <div class="text-violet-300 font-bold mb-2">🧪 Test Controls</div>
-            <div class="space-y-2">
-                <button id="auto-fill-test" class="w-full px-3 py-2 bg-violet-500/20 text-violet-300 rounded text-sm hover:bg-violet-500/30">
-                    Auto-Fill Test Data
-                </button>
-                <button id="test-all-levels" class="w-full px-3 py-2 bg-green-500/20 text-green-300 rounded text-sm hover:bg-green-500/30">
-                    Test All Security Levels
-                </button>
-                <button id="view-test-log" class="w-full px-3 py-2 bg-blue-500/20 text-blue-300 rounded text-sm hover:bg-blue-500/30">
-                    View Test Log
-                </button>
-                <button id="test-animation" class="w-full px-3 py-2 bg-purple-500/20 text-purple-300 rounded text-sm hover:bg-purple-500/30">
-                    🎭 Test Animation
-                </button>
+        // Create floating test button at top
+        const testButton = document.createElement('button');
+        testButton.id = 'open-test-panel';
+        testButton.className = 'fixed top-4 right-4 z-50 glass-dark border border-violet-500/30 rounded-xl px-4 py-2 text-violet-300 hover:bg-violet-500/20 transition-all duration-200 flex items-center space-x-2';
+        testButton.innerHTML = `
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+            </svg>
+            <span>🧪 Test</span>
+        `;
+        document.body.appendChild(testButton);
+
+        // Create modal dialog
+        const testModal = document.createElement('div');
+        testModal.id = 'test-modal';
+        testModal.className = 'fixed inset-0 bg-black/70 backdrop-blur-lg z-50 hidden flex items-center justify-center';
+        testModal.innerHTML = `
+            <div class="glass-dark border border-violet-500/30 rounded-2xl p-6 mx-4 w-full max-w-md">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-violet-300 font-bold text-lg flex items-center space-x-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                        </svg>
+                        <span>Test Controls</span>
+                    </h3>
+                    <button id="close-test-panel" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+                </div>
+                
+                <div class="space-y-3">
+                    <button id="auto-fill-test" class="w-full px-3 py-2 bg-violet-500/20 text-violet-300 rounded text-sm hover:bg-violet-500/30 transition-colors">
+                        📝 Auto-Fill Test Data
+                    </button>
+                    <button id="test-all-levels" class="w-full px-3 py-2 bg-green-500/20 text-green-300 rounded text-sm hover:bg-green-500/30 transition-colors">
+                        🔒 Test All Security Levels
+                    </button>
+                    <button id="view-test-log" class="w-full px-3 py-2 bg-blue-500/20 text-blue-300 rounded text-sm hover:bg-blue-500/30 transition-colors">
+                        📊 View Test Log
+                    </button>
+                    <button id="test-animation" class="w-full px-3 py-2 bg-purple-500/20 text-purple-300 rounded text-sm hover:bg-purple-500/30 transition-colors">
+                        🎭 Test Animation
+                    </button>
+                </div>
             </div>
         `;
-        
-        document.body.appendChild(testPanel);
+        document.body.appendChild(testModal);
+
+        // Add modal control event listeners
+        testButton.addEventListener('click', () => {
+            testModal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        });
+
+        document.getElementById('close-test-panel').addEventListener('click', () => {
+            testModal.classList.add('hidden');
+            document.body.style.overflow = '';
+        });
+
+        // Close on background click
+        testModal.addEventListener('click', (e) => {
+            if (e.target === testModal) {
+                testModal.classList.add('hidden');
+                document.body.style.overflow = '';
+            }
+        });
+
+        // Close on escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !testModal.classList.contains('hidden')) {
+                testModal.classList.add('hidden');
+                document.body.style.overflow = '';
+            }
+        });
 
         // Add event listeners for test controls
         document.getElementById('auto-fill-test')?.addEventListener('click', () => this.autoFillTestData());

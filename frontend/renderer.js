@@ -180,7 +180,11 @@ class QuantumKeyManager {
             if (encryptionSelect) {
                 encryptionSelect.addEventListener('change', (e) => {
                     this.updateEncryptionLevel(e.target.value);
+                    this.updateSecurityGauge(e.target.value);
                 });
+                
+                // Initialize security gauge with current level
+                this.updateSecurityGauge(encryptionSelect.value);
             }
         });
     }
@@ -205,6 +209,82 @@ class QuantumKeyManager {
 
         // Log encryption level change
         console.log(`[QuMail] Encryption level changed to: ${info?.name || 'Unknown'}`);
+    }
+
+    // Update security gauge based on encryption level
+    updateSecurityGauge(level) {
+        const securityBar = document.getElementById('security-bar');
+        const securityIndicator = document.getElementById('security-indicator');
+        const securityText = document.getElementById('security-text');
+        const securityDetails = document.getElementById('security-details');
+        const bitStrength = document.getElementById('bit-strength');
+
+        if (!securityBar || !securityIndicator || !securityText || !securityDetails) {
+            console.log('⚠️ Security gauge elements not found');
+            return;
+        }
+
+        const securityLevels = {
+            '1': {
+                width: '95%',
+                color: 'from-green-400 to-green-500',
+                indicatorColor: 'bg-green-400',
+                textColor: 'text-green-300',
+                name: 'Level 1: Quantum Secure',
+                description: 'QKD Only',
+                bitStrength: '256-bit'
+            },
+            '2': {
+                width: '85%',
+                color: 'from-blue-400 to-blue-500',
+                indicatorColor: 'bg-blue-400',
+                textColor: 'text-blue-300',
+                name: 'Level 2: Quantum-aided AES',
+                description: 'QKD + AES-256',
+                bitStrength: '192-bit'
+            },
+            '3': {
+                width: '75%',
+                color: 'from-purple-400 to-purple-500',
+                indicatorColor: 'bg-purple-400',
+                textColor: 'text-purple-300',
+                name: 'Level 3: Hybrid PQC',
+                description: 'ML-KEM + ECDH',
+                bitStrength: '192-bit'
+            },
+            '4': {
+                width: '45%',
+                color: 'from-red-400 to-red-500',
+                indicatorColor: 'bg-red-400',
+                textColor: 'text-red-300',
+                name: 'Level 4: No Quantum Security',
+                description: 'Classical Only',
+                bitStrength: '128-bit'
+            }
+        };
+
+        const config = securityLevels[level] || securityLevels['2'];
+
+        // Update gauge bar with animation
+        securityBar.style.width = config.width;
+        securityBar.className = `h-3 rounded-full transition-all duration-700 ease-out bg-gradient-to-r ${config.color}`;
+
+        // Update indicator dot
+        securityIndicator.className = `w-2 h-2 rounded-full ${config.indicatorColor} animate-pulse`;
+
+        // Update security level text
+        securityText.className = `${config.textColor} text-sm font-medium`;
+        securityText.textContent = config.name;
+
+        // Update security details
+        securityDetails.textContent = config.description;
+
+        // Update bit strength display
+        if (bitStrength) {
+            bitStrength.textContent = config.bitStrength;
+        }
+
+        console.log(`🔒 Security gauge updated to Level ${level}: ${config.name} (${config.bitStrength})`);
     }
 
     // Update key display
