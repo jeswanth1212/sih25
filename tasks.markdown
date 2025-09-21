@@ -160,7 +160,7 @@
   *Contribution*: Ensures smooth demo visuals.
 
 ## Step 4: Backend - Simulate Key Manager (KM) for QKD (~3-4 hours, 1 member, CPU-only)
-- [ ] **Task 20: Create Flask App**  
+- [x] **Task 20: Create Flask App**  
   *Description*: Set up a Flask server with a `/api/qkd/key` endpoint conforming to ETSI GS QKD 014 (JSON: key_id, key, metadata).  
   *Prompt*: “Generate Flask server for a quantum email client with a REST endpoint for ETSI GS QKD 014 key delivery, returning JSON with key_id, 256-bit key, and metadata (length, error_rate).”  
   *Action*: Save in `/backend/app.py`, run locally (`flask run`).  

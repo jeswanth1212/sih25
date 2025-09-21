@@ -3,7 +3,7 @@
 
 class QuantumKeyManager {
     constructor() {
-        this.apiBaseUrl = 'http://localhost:8080/api/v1/qkd'; // Mock QKD API endpoint
+        this.apiBaseUrl = 'http://localhost:5000/api/qkd'; // Flask QKD API endpoint
         this.keyCache = new Map();
         this.isConnected = false;
         this.initializeEventListeners();
@@ -35,12 +35,43 @@ class QuantumKeyManager {
         };
     }
 
-    // Mock ETSI GS QKD 014 compliant key retrieval
+    // Real ETSI GS QKD 014 compliant key retrieval from Flask API
     async retrieveQuantumKey(keyId = null) {
         try {
-            // Simulate network delay
-            await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 300));
+            console.log('🔄 Requesting quantum key from Flask QKD system...');
             
+            // Call Flask API
+            const response = await fetch(`${this.apiBaseUrl}/key`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const qkdResponse = await response.json();
+            console.log('📦 Received key data from Flask:', qkdResponse);
+            
+            // Cache the key
+            this.keyCache.set(qkdResponse.key_id, qkdResponse);
+            
+            // Update UI with new key
+            this.displayQuantumKey(qkdResponse);
+            
+            console.log(`✅ Quantum key retrieved from Flask API: ${qkdResponse.key_id}`);
+            this.isConnected = true;
+            
+            return qkdResponse;
+            
+        } catch (error) {
+            console.error('❌ Failed to retrieve quantum key from Flask API:', error);
+            console.log('⚠️ Falling back to mock key generation...');
+            this.isConnected = false;
+            
+            // Fallback to mock generation if API fails
             const qkdResponse = {
                 key_id: keyId || `qkd_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
                 key: this.generateQuantumKey(),
@@ -51,21 +82,74 @@ class QuantumKeyManager {
                 peer_node_id: "RECIPIENT_NODE_" + Math.floor(Math.random() * 100),
             };
 
-            // Cache the key
             this.keyCache.set(qkdResponse.key_id, qkdResponse);
-            
-            // Update UI with new key
             this.displayQuantumKey(qkdResponse);
             
             return qkdResponse;
-        } catch (error) {
-            console.error('QKD Key Retrieval Error:', error);
-            this.showError('Failed to retrieve quantum key');
-            return null;
         }
     }
 
-    // Mock key consumption (ETSI GS QKD 014 key lifecycle)
+    // Generate a NEW quantum key via Flask API (for manual generation)
+    async generateNewQuantumKey() {
+        try {
+            console.log('🔄 Generating NEW quantum key via Flask API...');
+            
+            // Call Flask API to generate new key
+            const response = await fetch(`${this.apiBaseUrl}/generate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            console.log('📦 New key generated via Flask:', result);
+            
+            if (result.success && result.key_data) {
+                const qkdResponse = result.key_data;
+                
+                // Cache the key
+                this.keyCache.set(qkdResponse.key_id, qkdResponse);
+                
+                // Update UI with new key
+                this.displayQuantumKey(qkdResponse);
+                
+                console.log(`✅ NEW quantum key generated via Flask API: ${qkdResponse.key_id}`);
+                this.isConnected = true;
+                
+                return qkdResponse;
+            } else {
+                throw new Error('Key generation failed');
+            }
+            
+        } catch (error) {
+            console.error('❌ Failed to generate new key via Flask API:', error);
+            console.log('⚠️ Falling back to mock key generation...');
+            this.isConnected = false;
+            
+            // Fallback to mock generation if API fails
+            const qkdResponse = {
+                key_id: `qkd_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+                key: this.generateQuantumKey(),
+                metadata: this.generateQKDMetadata(),
+                status: "READY",
+                timestamp: new Date().toISOString(),
+                qkd_node_id: "ISRO_QKD_NODE_001",
+                peer_node_id: "RECIPIENT_NODE_" + Math.floor(Math.random() * 100),
+            };
+
+            this.keyCache.set(qkdResponse.key_id, qkdResponse);
+            this.displayQuantumKey(qkdResponse);
+            
+            return qkdResponse;
+        }
+    }
+
+    // Real key consumption via Flask API (ETSI GS QKD 014 key lifecycle)
     async consumeQuantumKey(keyId) {
         try {
             const key = this.keyCache.get(keyId);
@@ -73,19 +157,47 @@ class QuantumKeyManager {
                 throw new Error(`Key ${keyId} not found`);
             }
 
-            // Simulate key consumption
-            await new Promise(resolve => setTimeout(resolve, 50));
+            console.log(`🔄 Consuming key ${keyId} via Flask API...`);
             
-            key.status = "CONSUMED";
-            key.consumed_at = new Date().toISOString();
-            
-            // Remove from cache after consumption (one-time use)
-            setTimeout(() => {
+            try {
+                // Call Flask API to consume key
+                const response = await fetch(`${this.apiBaseUrl}/consume/${keyId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                console.log('📦 Key consumption result from Flask:', result);
+                
+                // Remove from local cache immediately
                 this.keyCache.delete(keyId);
                 this.updateKeyDisplay();
-            }, 1000);
-
-            return { success: true, message: `Key ${keyId} consumed successfully` };
+                
+                console.log(`✅ Key consumed via Flask API: ${keyId}`);
+                return result;
+                
+            } catch (apiError) {
+                console.error('❌ Flask API consumption failed:', apiError);
+                console.log('⚠️ Falling back to local consumption...');
+                
+                // Fallback to local consumption
+                key.status = "CONSUMED";
+                key.consumed_at = new Date().toISOString();
+                
+                setTimeout(() => {
+                    this.keyCache.delete(keyId);
+                    this.updateKeyDisplay();
+                }, 1000);
+                
+                return { success: true, message: `Key ${keyId} consumed locally (API fallback)` };
+            }
+            
         } catch (error) {
             console.error('Key Consumption Error:', error);
             return { success: false, error: error.message };
@@ -161,7 +273,7 @@ class QuantumKeyManager {
             // Manual key generation button
             const generateBtn = document.getElementById('generate-qkd-key');
             if (generateBtn) {
-                generateBtn.addEventListener('click', () => this.retrieveQuantumKey());
+                generateBtn.addEventListener('click', () => this.generateNewQuantumKey());
             }
 
             // Key consumption handlers
