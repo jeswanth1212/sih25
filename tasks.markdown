@@ -98,21 +98,21 @@
   *Action*: Download free starry image from Unsplash, save in `/frontend/assets`, add CSS to `index.html` (e.g., `background: url('stars.jpg')` with `bg-gradient-to-b from-purple-800/30`).  
   *Contribution*: Enhances ISRO alignment.
 
-- [ ] **Task 10: Implement Mock API Calls**  
+- [x] **Task 10: Implement Mock API Calls**  
   *Description*: Simulate QKD key retrieval (ETSI GS QKD 014 format: `{"key_id": "qkd_001", "key": "<256-bit-key>", "metadata": {"length": 256, "error_rate": 0.1}}`) with static JSON.  
-  *Prompt*: “Add mock fetch calls in Electron to simulate ETSI GS QKD 014 key retrieval with JSON structure including key_id, key, and metadata.”  
+  *Prompt*: "Add mock fetch calls in Electron to simulate ETSI GS QKD 014 key retrieval with JSON structure including key_id, key, and metadata."  
   *Action*: Add JavaScript in `/frontend/renderer.js` to log/display mock keys in GUI.  
   *Contribution*: Enables early GUI testing.
 
-- [ ] **Task 11: Add Placeholder Animations**  
+- [x] **Task 11: Add Placeholder Animations**  
   *Description*: Add temporary CSS animations (e.g., violet/purple spinning loader) for hybrid key flows.  
-  *Prompt*: “Generate CSS animations for a placeholder QKD key flow in Electron, using violet/purple colors.”  
+  *Prompt*: "Generate CSS animations for a placeholder QKD key flow in Electron, using violet/purple colors."  
   *Action*: Add to `index.html` (e.g., `@keyframes glow { from { box-shadow: 0 0 10px violet; } }`).  
   *Contribution*: Previews animation for judges.
 
-- [ ] **Task 12: Test GUI with Mock Data**  
+- [x] **Task 12: Test GUI with Mock Data**  
   *Description*: Simulate email sending by logging form inputs and mock encrypted output.  
-  *Prompt*: “Generate test script for Electron GUI with mock email sending.”  
+  *Prompt*: "Generate test script for Electron GUI with mock email sending."  
   *Action*: Save in `/frontend/test_gui.js`, run `npm start`, verify form inputs and animations.  
   *Contribution*: Ensures functional GUI for demo.
 
