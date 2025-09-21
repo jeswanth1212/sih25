@@ -25,6 +25,7 @@ MANIFEST
 
 # Virtual Environment
 venv/
+venv_py312/
 env/
 ENV/
 .venv/

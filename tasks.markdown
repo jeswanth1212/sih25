@@ -73,9 +73,9 @@
   *Action*: Save as `README.md` in `/docs`.  
   *Contribution*: Documents project purpose.
 
-- [ ] **Task 6.5: Set Up Firebase**  
+- [x] **Task 6.5: Set Up Firebase**  
   *Description*: Create a free Firebase project for Realtime Database storage (keys/configs).  
-  *Prompt*: “Generate Python code to set up Firebase Realtime Database integration for key storage in a quantum email client.”  
+  *Prompt*: "Generate Python code to set up Firebase Realtime Database integration for key storage in a quantum email client."  
   *Action*: Create free Firebase account (console.firebase.google.com), add project, enable Realtime Database, save credentials (API key, database URL) in `/backend/config.py`. Install `firebase-admin` (`pip install firebase-admin`).  
   *Contribution*: Enables cloud storage for keys.
 

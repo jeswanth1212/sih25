@@ -12,13 +12,14 @@ class Config:
     # Firebase Configuration
     # NOTE: These values need to be filled manually after creating Firebase project
     FIREBASE_CONFIG = {
-        'apiKey': '',  # TODO: Add your Firebase API key
-        'authDomain': '',  # TODO: Add your Firebase auth domain  
-        'databaseURL': '',  # TODO: Add your Firebase Realtime Database URL
-        'projectId': '',  # TODO: Add your Firebase project ID
-        'storageBucket': '',  # TODO: Add your Firebase storage bucket
-        'messagingSenderId': '',  # TODO: Add your Firebase messaging sender ID
-        'appId': ''  # TODO: Add your Firebase app ID
+        'apiKey': 'AIzaSyBhzvjM6forcbSf1fAFCEHg80Gk2H8ZnMc',
+        'authDomain': 'qumail-sih2025.firebaseapp.com',
+        'databaseURL': 'https://qumail-sih2025-default-rtdb.asia-southeast1.firebasedatabase.app',
+        'projectId': 'qumail-sih2025',
+        'storageBucket': 'qumail-sih2025.firebasestorage.app',
+        'messagingSenderId': '145609944680',
+        'appId': '1:145609944680:web:b39697bda4d5a862d1d5dd',
+        'measurementId': 'G-T924G1PKWX'
     }
     
     # QKD Configuration
