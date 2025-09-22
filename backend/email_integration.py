@@ -25,6 +25,7 @@ import os
 import json
 import base64
 import logging
+import secrets
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Any, Union
 from email.mime.multipart import MIMEMultipart
@@ -36,6 +37,20 @@ from dataclasses import dataclass, asdict
 
 # Import QuMail encryption
 from encryption import QuMailMultiLevelEncryption, SecurityLevel, EncryptedMessage, EncryptionMetadata
+
+# Import shared encryptor function from app.py to ensure same instance
+def get_encryptor():
+    """Get the shared encryption instance from app.py"""
+    try:
+        # Import from app.py to use the same singleton instance
+        from app import get_encryptor as app_get_encryptor
+        return app_get_encryptor()
+    except ImportError:
+        # Fallback: create our own instance if app.py not available
+        global global_encryptor
+        if 'global_encryptor' not in globals():
+            global_encryptor = QuMailMultiLevelEncryption()
+        return global_encryptor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -88,6 +103,9 @@ class ReceivedEmail:
     original_content: str = ""
     encryption_metadata: Dict[str, Any] = None
     signature_verified: bool = False
+    decryption_successful: bool = False
+    decryption_error: str = ""
+    algorithm: str = ""
     error: str = ""
 
 @dataclass
@@ -116,7 +134,7 @@ class QuMailEmailSender:
             credentials: Email account credentials
         """
         self.credentials = credentials
-        self.encryptor = QuMailMultiLevelEncryption()
+        self.encryptor = get_encryptor()  # Use shared encryption instance
         self.smtp_server = None
         
     def connect_smtp(self) -> bool:
@@ -236,20 +254,16 @@ class QuMailEmailSender:
             mime_msg['X-QuMail-ETSI-Compliant'] = str(encryption_metadata['etsi_compliant'])
             
             # Create encrypted content part
-            if email_msg.security_level == SecurityLevel.NO_QUANTUM:
-                # Level 4: Send as plaintext
-                content_part = MIMEText(email_msg.content, 'plain', 'utf-8')
-            else:
-                # Levels 1-3: Send encrypted content with metadata
-                encrypted_body = {
-                    "qumail_version": "1.0.0",
-                    "encrypted_content": encrypted_content,
-                    "encryption_metadata": encryption_metadata,
-                    "instructions": "This email was encrypted with QuMail. Use QuMail client to decrypt."
-                }
-                
-                # Create both plain text and JSON parts
-                plain_text = f"""
+            # For all levels (including Level 4), include both plain text and JSON attachment
+            encrypted_body = {
+                "qumail_version": "1.0.0",
+                "encrypted_content": encrypted_content,
+                "encryption_metadata": encryption_metadata,
+                "instructions": "This email was encrypted with QuMail. Use QuMail client to decrypt."
+            }
+            
+            # Create both plain text and JSON parts
+            plain_text = f"""
 🔐 QuMail Encrypted Message 🔐
 
 This email was encrypted using QuMail's hybrid quantum-classical encryption.
@@ -270,20 +284,20 @@ Encryption Metadata:
 ---
 QuMail - Quantum Secure Email for ISRO
 Smart India Hackathon 2025
-                """.strip()
-                
-                # Add plain text part for non-QuMail clients
-                plain_part = MIMEText(plain_text, 'plain', 'utf-8')
-                mime_msg.attach(plain_part)
-                
-                # Add JSON part for QuMail clients
-                json_part = MIMEApplication(
-                    json.dumps(encrypted_body, indent=2).encode('utf-8'),
-                    _subtype='json',
-                    name='qumail_encrypted.json'
-                )
-                json_part.add_header('Content-Disposition', 'attachment', filename='qumail_encrypted.json')
-                mime_msg.attach(json_part)
+            """.strip()
+            
+            # Add plain text part for non-QuMail clients
+            plain_part = MIMEText(plain_text, 'plain', 'utf-8')
+            mime_msg.attach(plain_part)
+            
+            # Add JSON part for QuMail clients
+            json_part = MIMEApplication(
+                json.dumps(encrypted_body, indent=2).encode('utf-8'),
+                _subtype='json',
+                name='qumail_encrypted.json'
+            )
+            json_part.add_header('Content-Disposition', 'attachment', filename='qumail_encrypted.json')
+            mime_msg.attach(json_part)
             
             # Handle attachments (if any)
             for attachment in email_msg.attachments:
@@ -429,7 +443,7 @@ class QuMailEmailReceiver:
             credentials: Email account credentials
         """
         self.credentials = credentials
-        self.encryptor = QuMailMultiLevelEncryption()
+        self.encryptor = get_encryptor()  # Use shared encryption instance
         self.imap_server = None
         
     def connect_imap(self) -> bool:
@@ -647,6 +661,8 @@ class QuMailEmailReceiver:
             
         except Exception as e:
             logger.error(f"❌ Decryption error: {e}")
+            # Store the error message for frontend display
+            self._last_decryption_error = str(e)
             return "", False
     
     def fetch_emails(self, limit: int = 10, folder: str = "INBOX") -> EmailReceiveResult:
@@ -725,10 +741,15 @@ class QuMailEmailReceiver:
                         received_email.decrypted_content = decrypted_content
                         received_email.encryption_metadata = encrypted_data.get('encryption_metadata', {})
                         received_email.signature_verified = signature_verified
+                        received_email.algorithm = encrypted_data.get('encryption_metadata', {}).get('algorithm', '')
                         
                         if decrypted_content:
+                            received_email.decryption_successful = True
                             logger.info(f"✅ QuMail email decrypted: Level {security_level}")
                         else:
+                            received_email.decryption_successful = False
+                            # Get the actual error message from decryption
+                            received_email.decryption_error = getattr(self, '_last_decryption_error', 'Decryption failed - no content returned')
                             received_email.error = "Decryption failed"
                             logger.warning(f"⚠️ QuMail email decryption failed")
                     else:
@@ -761,6 +782,83 @@ class QuMailEmailReceiver:
                 success=False,
                 error=str(e)
             )
+    
+    def fetch_inbox_emails(self, limit: int = 10) -> EmailReceiveResult:
+        """Fetch emails from Inbox"""
+        return self.fetch_emails(limit=limit, folder="INBOX")
+    
+    def fetch_sent_emails(self, limit: int = 10) -> EmailReceiveResult:
+        """Fetch emails from Sent folder"""
+        # Try different possible sent folder names
+        for folder_name in ["[Gmail]/Sent Mail", "INBOX.Sent", "Sent", "Sent Items"]:
+            try:
+                logger.info(f"Trying to access sent folder: {folder_name}")
+                result = self.fetch_emails(limit=limit, folder=folder_name)
+                if result.success:
+                    logger.info(f"Successfully accessed sent folder: {folder_name}")
+                    return result
+            except Exception as e:
+                logger.warning(f"Failed to access {folder_name}: {str(e)}")
+                continue
+        
+        # If all fail, try to list available folders to help debug
+        try:
+            self.mail.select("INBOX")  # Select a known folder first
+            folders = self.mail.list()[1]
+            logger.error(f"Available folders: {[folder.decode() for folder in folders]}")
+        except Exception as e:
+            logger.error(f"Could not list folders: {e}")
+        
+        # Return error with more info
+        return EmailReceiveResult(
+            success=False,
+            error="Could not access sent folder - tried multiple folder names. Check Gmail IMAP settings."
+        )
+    
+    def fetch_trash_emails(self, limit: int = 10) -> EmailReceiveResult:
+        """Fetch emails from Trash folder"""
+        return self.fetch_emails(limit=limit, folder="[Gmail]/Trash")
+    
+    def fetch_draft_emails(self, limit: int = 10) -> EmailReceiveResult:
+        """Fetch emails from Drafts folder"""
+        return self.fetch_emails(limit=limit, folder="[Gmail]/Drafts")
+    
+    def fetch_all_mail(self, limit: int = 10) -> EmailReceiveResult:
+        """Fetch emails from All Mail folder"""
+        return self.fetch_emails(limit=limit, folder="[Gmail]/All Mail")
+    
+    def list_folders(self) -> dict:
+        """List all available Gmail folders"""
+        try:
+            if not self.imap_server:
+                if not self.connect_imap():
+                    return {"success": False, "error": "Failed to connect to IMAP"}
+            
+            # List all folders
+            folders = []
+            typ, folder_list = self.imap_server.list()
+            
+            if typ == 'OK':
+                for folder in folder_list:
+                    folder_name = folder.decode().split('"/"')[-1].strip().strip('"')
+                    folders.append(folder_name)
+            
+            return {
+                "success": True,
+                "folders": folders,
+                "common_folders": {
+                    "inbox": "INBOX",
+                    "sent": "[Gmail]/Sent Mail", 
+                    "trash": "[Gmail]/Trash",
+                    "drafts": "[Gmail]/Drafts",
+                    "all_mail": "[Gmail]/All Mail",
+                    "spam": "[Gmail]/Spam"
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Folder list error: {e}")
+            return {"success": False, "error": str(e)}
     
     def search_qumail_emails(self, limit: int = 10) -> EmailReceiveResult:
         """

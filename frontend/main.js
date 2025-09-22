@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, shell } = require('electron');
 const path = require('path');
 
 // QuMail: Quantum Secure Email Client - Main Process
@@ -7,7 +7,9 @@ const path = require('path');
 class QuMailApp {
     constructor() {
         this.mainWindow = null;
+        this.loginWindow = null;
         this.isDevelopment = process.env.NODE_ENV === 'development';
+        this.userCredentials = null;
     }
 
     createMainWindow() {
@@ -33,6 +35,13 @@ class QuMailApp {
 
         // Load the main HTML file
         this.mainWindow.loadFile(path.join(__dirname, 'index.html'));
+        
+        // Pass credentials to main window
+        this.mainWindow.webContents.once('dom-ready', () => {
+            if (this.userCredentials) {
+                this.mainWindow.webContents.send('user-credentials', this.userCredentials);
+            }
+        });
 
         // Show window when ready
         this.mainWindow.once('ready-to-show', () => {
@@ -56,6 +65,49 @@ class QuMailApp {
 
         this.mainWindow.on('unmaximize', () => {
             this.mainWindow.webContents.send('window-unmaximized');
+        });
+    }
+
+    createLoginWindow() {
+        // Create the login window
+        this.loginWindow = new BrowserWindow({
+            width: 500,
+            height: 700,
+            resizable: false,
+            show: false,
+            center: true,
+            icon: path.join(__dirname, 'assets', 'icon.png'),
+            webPreferences: {
+                nodeIntegration: true,
+                contextIsolation: false,
+                enableRemoteModule: true,
+                webSecurity: false
+            },
+            titleBarStyle: 'default',
+            frame: true,
+            backgroundColor: '#667eea',
+            alwaysOnTop: false
+        });
+
+        // Load the login HTML file
+        this.loginWindow.loadFile(path.join(__dirname, 'login.html'));
+
+        // Show window when ready
+        this.loginWindow.once('ready-to-show', () => {
+            this.loginWindow.show();
+            
+            if (this.isDevelopment) {
+                this.loginWindow.webContents.openDevTools();
+            }
+        });
+
+        // Handle window closed
+        this.loginWindow.on('closed', () => {
+            this.loginWindow = null;
+            // If login window is closed without login, quit app
+            if (!this.mainWindow) {
+                app.quit();
+            }
         });
     }
 
@@ -201,6 +253,26 @@ Team: QuMail Team SIH2025`,
     }
 
     setupIPC() {
+        // Handle login success
+        ipcMain.on('login-success', (event, credentials) => {
+            console.log('✅ Login successful for:', credentials.email);
+            this.userCredentials = credentials;
+            
+            // Close login window
+            if (this.loginWindow) {
+                this.loginWindow.close();
+                this.loginWindow = null;
+            }
+            
+            // Create main window
+            this.createMainWindow();
+        });
+
+        // Handle external URL opening
+        ipcMain.on('open-external-url', (event, url) => {
+            shell.openExternal(url);
+        });
+
         // Handle IPC messages from renderer process
         ipcMain.handle('get-app-version', () => {
             return app.getVersion();
@@ -234,7 +306,8 @@ Team: QuMail Team SIH2025`,
     initialize() {
         // Handle app ready
         app.whenReady().then(() => {
-            this.createMainWindow();
+            // Start with login window instead of main window
+            this.createLoginWindow();
             this.createMenu();
             this.setupIPC();
 

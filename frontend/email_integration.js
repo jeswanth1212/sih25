@@ -51,7 +51,15 @@ class QuMailEmailIntegration {
                 throw new Error('Email credentials not set. Please configure Gmail App Password.');
             }
 
-            console.log(`📧 Sending encrypted email with Level ${formData.securityLevel}...`);
+            // Handle both camelCase and snake_case parameter formats
+            const securityLevel = formData.securityLevel || formData.security_level;
+            
+            // Validate security level
+            if (!securityLevel || ![1, 2, 3, 4, '1', '2', '3', '4'].includes(securityLevel)) {
+                throw new Error(`Invalid security level: ${securityLevel}. Must be 1, 2, 3, or 4.`);
+            }
+            
+            console.log(`📧 Sending encrypted email with Level ${securityLevel}...`);
             
             // Prepare request data for email API
             const requestData = {
@@ -60,7 +68,7 @@ class QuMailEmailIntegration {
                 recipient: formData.recipient || formData.to,
                 subject: formData.subject,
                 content: formData.message,
-                security_level: parseInt(formData.securityLevel),
+                security_level: parseInt(securityLevel),
                 attachments: formData.attachments || []
             };
             
@@ -190,6 +198,101 @@ class QuMailEmailIntegration {
             
         } catch (error) {
             console.error('❌ Email receiving failed:', error);
+            throw error;
+        }
+    }
+
+    // Get emails from specific Gmail folder
+    async getEmailsFromFolder(folder, limit = 10) {
+        try {
+            if (!this.credentials) {
+                throw new Error('Email credentials not set. Please configure Gmail App Password.');
+            }
+
+            console.log(`📬 Getting emails from ${folder}...`);
+            
+            const requestData = {
+                email: this.credentials.email,
+                password: this.credentials.password,
+                limit: limit
+            };
+            
+            const response = await fetch(`${this.apiBaseUrl}/email/${folder}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            
+            console.log(`✅ Retrieved ${result.total_count} emails from ${folder}`);
+            return result;
+            
+        } catch (error) {
+            console.error(`❌ ${folder} email fetch failed:`, error);
+            throw error;
+        }
+    }
+
+    // Get inbox emails
+    async getInboxEmails(limit = 10) {
+        return this.getEmailsFromFolder('inbox', limit);
+    }
+
+    // Get sent emails
+    async getSentEmails(limit = 10) {
+        return this.getEmailsFromFolder('sent', limit);
+    }
+
+    // Get trash emails
+    async getTrashEmails(limit = 10) {
+        return this.getEmailsFromFolder('trash', limit);
+    }
+
+    // Get draft emails
+    async getDraftEmails(limit = 10) {
+        return this.getEmailsFromFolder('drafts', limit);
+    }
+
+    // List available folders
+    async listFolders() {
+        try {
+            if (!this.credentials) {
+                throw new Error('Email credentials not set. Please configure Gmail App Password.');
+            }
+
+            const requestData = {
+                email: this.credentials.email,
+                password: this.credentials.password
+            };
+            
+            const response = await fetch(`${this.apiBaseUrl}/email/folders`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            
+            console.log('✅ Retrieved Gmail folders');
+            return result;
+            
+        } catch (error) {
+            console.error('❌ Folder list failed:', error);
             throw error;
         }
     }
@@ -400,6 +503,20 @@ console.log(`
 🚀 Ready for Real Email Sending & Receiving
 ⚡ Supports Gmail SMTP/IMAP with App Passwords
 `);
+
+// Listen for credentials from main process (Electron)
+if (typeof require !== 'undefined') {
+    try {
+        const { ipcRenderer } = require('electron');
+        ipcRenderer.on('user-credentials', (event, credentials) => {
+            console.log('🔐 Auto-setting credentials from login:', credentials.email);
+            emailIntegration.setCredentials(credentials.email, credentials.password);
+        });
+    } catch (e) {
+        // Not in Electron environment
+        console.log('🌐 Running in browser mode');
+    }
+}
 
 // Export for potential module usage
 if (typeof module !== 'undefined' && module.exports) {

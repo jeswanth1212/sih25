@@ -21,6 +21,22 @@ FIREBASE_CONFIG = Config.FIREBASE_CONFIG
 QKD_CONFIG = Config.QKD_CONFIG
 FLASK_CONFIG = Config.FLASK_CONFIG
 
+# Email Integration Imports
+try:
+    from email_integration import (
+        create_email_sender, 
+        create_email_receiver, 
+        EmailMessage, 
+        EmailCredentials,
+        SecurityLevel,
+        QuMailEmailSender
+    )
+    print("✅ Email integration modules imported successfully")
+except ImportError as e:
+    print(f"⚠️ Email integration import warning: {e}")
+    create_email_sender = None
+    create_email_receiver = None
+
 # Import BB84 QKD Simulator
 import sys
 import os
@@ -1420,8 +1436,9 @@ def send_encrypted_email():
             if field not in data:
                 return jsonify({"error": f"Missing required field: {field}"}), 400
         
-        # Import email integration
-        from email_integration import create_email_sender, EmailMessage, SecurityLevel
+        # Check if email integration is available
+        if not create_email_sender:
+            return jsonify({"success": False, "error": "Email integration not available"}), 500
         
         # Map security level
         security_level_map = {
@@ -1485,7 +1502,7 @@ def send_test_email():
                 return jsonify({"error": f"Missing required field: {field}"}), 400
         
         # Import email integration
-        from email_integration import create_email_sender, SecurityLevel
+        # Email sender already imported globally
         
         # Get security level (default to Level 2)
         security_level_map = {
@@ -1524,40 +1541,95 @@ def send_test_email():
             "error": str(e)
         }), 500
 
-@app.route('/api/email/status', methods=['GET'])
+@app.route('/api/email/status', methods=['GET', 'POST'])
 def email_status():
-    """Get email integration status"""
+    """Get email integration status or validate credentials"""
     try:
-        # Test basic imports
-        from email_integration import QuMailEmailSender
+        if request.method == 'GET':
+            # Test basic imports
+            # QuMailEmailSender already imported globally
+            
+            status = {
+                "service": "QuMail Email Integration",
+                "status": "operational",
+                "supported_providers": ["Gmail"],
+                "supported_security_levels": {
+                    "1": "Quantum Secure (OTP)",
+                    "2": "Quantum-aided AES", 
+                    "3": "Hybrid PQC",
+                    "4": "No Quantum Security"
+                },
+                "features": [
+                    "SMTP sending with TLS",
+                    "Multi-level encryption",
+                    "MIME multipart messages",
+                    "Attachment support",
+                    "App Password authentication"
+                ],
+                "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+            }
+            
+            return jsonify(status), 200
         
-        status = {
-            "service": "QuMail Email Integration",
-            "status": "operational",
-            "supported_providers": ["Gmail"],
-            "supported_security_levels": {
-                "1": "Quantum Secure (OTP)",
-                "2": "Quantum-aided AES", 
-                "3": "Hybrid PQC",
-                "4": "No Quantum Security"
-            },
-            "features": [
-                "SMTP sending with TLS",
-                "Multi-level encryption",
-                "MIME multipart messages",
-                "Attachment support",
-                "App Password authentication"
-            ],
-            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-        }
-        
-        return jsonify(status), 200
+        elif request.method == 'POST':
+            # Validate Gmail credentials
+            data = request.get_json()
+            
+            if not data or 'email' not in data or 'password' not in data:
+                return jsonify({
+                    "success": False,
+                    "error": "Missing email or password"
+                }), 400
+            
+            email = data['email']
+            password = data['password']
+            
+            # Basic validation
+            if not email.endswith('@gmail.com'):
+                return jsonify({
+                    "success": False,
+                    "error": "Only Gmail addresses are supported"
+                }), 400
+            
+            if len(password.replace(' ', '')) != 16:
+                return jsonify({
+                    "success": False,
+                    "error": "Gmail App Password must be 16 characters"
+                }), 400
+            
+            # Test SMTP connection
+            try:
+                # EmailCredentials and create_email_sender already imported globally
+                
+                # Remove spaces from app password
+                clean_password = password.replace(' ', '')
+                credentials = EmailCredentials(email=email, password=clean_password)
+                
+                with create_email_sender(credentials.email, credentials.password) as sender:
+                    # Try to connect
+                    if sender.connect_smtp():
+                        return jsonify({
+                            "success": True,
+                            "message": "Gmail credentials validated successfully",
+                            "email": email
+                        }), 200
+                    else:
+                        return jsonify({
+                            "success": False,
+                            "error": "Failed to connect to Gmail SMTP server"
+                        }), 401
+                        
+            except Exception as smtp_error:
+                return jsonify({
+                    "success": False,
+                    "error": f"Gmail authentication failed: {str(smtp_error)}"
+                }), 401
         
     except Exception as e:
         print(f"❌ Email status error: {e}")
         return jsonify({
-            "error": "Email integration not available",
-            "message": str(e)
+            "success": False,
+            "error": str(e)
         }), 500
 
 @app.route('/api/email/receive', methods=['POST'])
@@ -1572,8 +1644,7 @@ def receive_emails():
             if field not in data:
                 return jsonify({"error": f"Missing required field: {field}"}), 400
         
-        # Import email integration
-        from email_integration import create_email_receiver
+        # Email receiver already imported globally
         
         # Get optional parameters
         limit = data.get('limit', 10)
@@ -1638,8 +1709,7 @@ def receive_qumail_emails():
             if field not in data:
                 return jsonify({"error": f"Missing required field: {field}"}), 400
         
-        # Import email integration
-        from email_integration import create_email_receiver
+        # Email receiver already imported globally
         
         # Get optional parameters
         limit = data.get('limit', 10)
@@ -1662,6 +1732,9 @@ def receive_qumail_emails():
                     "decrypted_content": email.decrypted_content,
                     "encryption_metadata": email.encryption_metadata,
                     "signature_verified": email.signature_verified,
+                    "decryption_successful": email.decryption_successful,
+                    "decryption_error": email.decryption_error,
+                    "algorithm": email.algorithm,
                     "error": email.error
                 }
                 emails_data.append(email_data)
@@ -1695,6 +1768,230 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({"error": "Internal server error"}), 500
+
+@app.route('/api/email/folders', methods=['POST'])
+def list_email_folders():
+    """List available Gmail folders"""
+    try:
+        data = request.get_json()
+        
+        required_fields = ['email', 'password']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        if not create_email_receiver:
+            return jsonify({"success": False, "error": "Email integration not available"}), 500
+            
+        with create_email_receiver(data['email'], data['password']) as receiver:
+            result = receiver.list_folders()
+        
+        return jsonify(result), 200 if result.get("success") else 500
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/email/inbox', methods=['POST'])
+def get_inbox_emails():
+    """Get emails from Inbox"""
+    try:
+        data = request.get_json()
+        
+        required_fields = ['email', 'password']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        limit = data.get('limit', 10)
+        
+        if not create_email_receiver:
+            return jsonify({"success": False, "error": "Email integration not available"}), 500
+        
+        with create_email_receiver(data['email'], data['password']) as receiver:
+            result = receiver.fetch_inbox_emails(limit=limit)
+        
+        if result.success:
+            emails_data = []
+            for email in result.emails:
+                email_data = {
+                    "message_id": email.message_id,
+                    "sender": email.sender,
+                    "recipient": email.recipient,
+                    "subject": email.subject,
+                    "received_at": email.received_at,
+                    "security_level": email.security_level,
+                    "decrypted_content": email.decrypted_content,
+                    "original_content": email.original_content,
+                    "is_qumail": email.is_qumail,
+                    "signature_verified": email.signature_verified,
+                    "decryption_successful": email.decryption_successful,
+                    "decryption_error": email.decryption_error,
+                    "algorithm": email.algorithm,
+                    "error": email.error
+                }
+                emails_data.append(email_data)
+            
+            return jsonify({
+                "success": True,
+                "emails": emails_data,
+                "total_count": result.total_count,
+                "folder": "INBOX"
+            }), 200
+        else:
+            return jsonify({"success": False, "error": result.error}), 500
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/email/sent', methods=['POST'])
+def get_sent_emails():
+    """Get emails from Sent folder"""
+    try:
+        data = request.get_json()
+        
+        required_fields = ['email', 'password']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        limit = data.get('limit', 10)
+        
+        if not create_email_receiver:
+            return jsonify({"success": False, "error": "Email integration not available"}), 500
+        
+        with create_email_receiver(data['email'], data['password']) as receiver:
+            result = receiver.fetch_sent_emails(limit=limit)
+        
+        if result.success:
+            emails_data = []
+            for email in result.emails:
+                email_data = {
+                    "message_id": email.message_id,
+                    "sender": email.sender,
+                    "recipient": email.recipient,
+                    "subject": email.subject,
+                    "received_at": email.received_at,
+                    "is_qumail": email.is_qumail,
+                    "decrypted_content": email.decrypted_content,
+                    "original_content": email.original_content
+                }
+                emails_data.append(email_data)
+            
+            return jsonify({
+                "success": True,
+                "emails": emails_data,
+                "total_count": result.total_count,
+                "folder": "[Gmail]/Sent Mail"
+            }), 200
+        else:
+            return jsonify({"success": False, "error": result.error}), 500
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/email/trash', methods=['POST'])
+def get_trash_emails():
+    """Get emails from Trash folder"""
+    try:
+        data = request.get_json()
+        
+        required_fields = ['email', 'password']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        limit = data.get('limit', 10)
+        
+        if not create_email_receiver:
+            return jsonify({"success": False, "error": "Email integration not available"}), 500
+        
+        with create_email_receiver(data['email'], data['password']) as receiver:
+            result = receiver.fetch_trash_emails(limit=limit)
+        
+        if result.success:
+            emails_data = []
+            for email in result.emails:
+                email_data = {
+                    "message_id": email.message_id,
+                    "sender": email.sender,
+                    "recipient": email.recipient,
+                    "subject": email.subject,
+                    "received_at": email.received_at,
+                    "is_qumail": email.is_qumail,
+                    "decrypted_content": email.decrypted_content,
+                    "original_content": email.original_content,
+                    "security_level": email.security_level,
+                    "signature_verified": email.signature_verified,
+                    "decryption_successful": email.decryption_successful,
+                    "decryption_error": email.decryption_error,
+                    "algorithm": email.algorithm,
+                    "error": email.error
+                }
+                emails_data.append(email_data)
+            
+            return jsonify({
+                "success": True,
+                "emails": emails_data,
+                "total_count": result.total_count,
+                "folder": "[Gmail]/Trash"
+            }), 200
+        else:
+            return jsonify({"success": False, "error": result.error}), 500
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/email/drafts', methods=['POST'])
+def get_draft_emails():
+    """Get emails from Drafts folder"""
+    try:
+        data = request.get_json()
+        
+        required_fields = ['email', 'password']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        limit = data.get('limit', 10)
+        
+        if not create_email_receiver:
+            return jsonify({"success": False, "error": "Email integration not available"}), 500
+        
+        with create_email_receiver(data['email'], data['password']) as receiver:
+            result = receiver.fetch_draft_emails(limit=limit)
+        
+        if result.success:
+            emails_data = []
+            for email in result.emails:
+                email_data = {
+                    "message_id": email.message_id,
+                    "sender": email.sender,
+                    "recipient": email.recipient,
+                    "subject": email.subject,
+                    "received_at": email.received_at,
+                    "is_qumail": email.is_qumail,
+                    "decrypted_content": email.decrypted_content,
+                    "original_content": email.original_content,
+                    "security_level": email.security_level,
+                    "signature_verified": email.signature_verified,
+                    "decryption_successful": email.decryption_successful,
+                    "decryption_error": email.decryption_error,
+                    "algorithm": email.algorithm,
+                    "error": email.error
+                }
+                emails_data.append(email_data)
+            
+            return jsonify({
+                "success": True,
+                "emails": emails_data,
+                "total_count": result.total_count,
+                "folder": "[Gmail]/Drafts"
+            }), 200
+        else:
+            return jsonify({"success": False, "error": result.error}), 500
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
     import argparse
