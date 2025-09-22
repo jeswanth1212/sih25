@@ -315,9 +315,9 @@ class HybridCryptoManager:
         
         # Try to import ML-KEM manager (safe version)
         try:
-            from ml_kem_safe import create_mlkem_manager
-            self.mlkem = create_mlkem_manager()
-            self.mlkem_available = True
+            # ML-KEM now handled by real_pqc.py
+            self.mlkem = None  # Deprecated
+            self.mlkem_available = False
             print("🔬 ML-KEM-768 integrated into hybrid manager")
         except ImportError:
             self.mlkem = None

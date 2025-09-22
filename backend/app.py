@@ -51,17 +51,8 @@ except Exception as e:
     ecdh_manager = None
     hybrid_manager = None
 
-# Import ML-KEM-768 Post-Quantum Crypto Module (Safe Version)
-try:
-    from ml_kem_safe import create_mlkem_manager
-    mlkem_manager = create_mlkem_manager()
-    print("✅ ML-KEM-768 Post-Quantum Crypto Module loaded successfully")
-except ImportError as e:
-    print(f"⚠️ ML-KEM-768 Crypto Module not available: {e}")
-    mlkem_manager = None
-except Exception as e:
-    print(f"⚠️ ML-KEM-768 Crypto Module initialization error: {e}")
-    mlkem_manager = None
+# ML-KEM is now handled by real_pqc.py - no separate ml_kem_safe module needed
+mlkem_manager = None  # Deprecated - using real_pqc instead
 
 # Import Hybrid Key Derivation Module
 try:
@@ -307,6 +298,11 @@ def home():
                 "generate_key": "/api/qkd/generate",
                 "status": "/api/qkd/status",
                 "test_bb84": "/api/qkd/bb84/test"
+            },
+            "encryption_endpoints": {
+                "encrypt_message": "/api/encrypt",
+                "decrypt_message": "/api/decrypt", 
+                "get_encryption_levels": "/api/encrypt/levels"
             },
             "ecdh": {
                 "generate_keypair": "/api/ecdh/keypair",
@@ -1136,6 +1132,167 @@ def derive_hybrid_key():
             "message": str(e)
         }), 500
 
+# ==================== ENCRYPTION API ENDPOINTS ====================
+
+# Global encryption instance for shared key storage
+global_encryptor = None
+
+def get_encryptor():
+    """Get or create global encryption instance"""
+    global global_encryptor
+    if global_encryptor is None:
+        from encryption import QuMailMultiLevelEncryption
+        global_encryptor = QuMailMultiLevelEncryption()
+    return global_encryptor
+
+@app.route('/api/encrypt', methods=['POST'])
+def encrypt_message():
+    """Encrypt message using specified security level"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['plaintext', 'security_level', 'sender', 'recipient']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        # Get shared encryption instance
+        from encryption import SecurityLevel
+        encryptor = get_encryptor()
+        
+        # Get security level enum
+        security_level_map = {
+            1: SecurityLevel.QUANTUM_SECURE,
+            2: SecurityLevel.QUANTUM_AIDED, 
+            3: SecurityLevel.HYBRID_PQC,
+            4: SecurityLevel.NO_QUANTUM
+        }
+        
+        security_level = security_level_map.get(data['security_level'])
+        if not security_level:
+            return jsonify({"error": "Invalid security level. Must be 1-4"}), 400
+        
+        # Encrypt the message
+        encrypted_message = encryptor.encrypt_message(
+            plaintext=data['plaintext'],
+            security_level=security_level,
+            sender=data['sender'],
+            recipient=data['recipient'],
+            subject=data.get('subject', ''),
+            attachments=data.get('attachments', [])
+        )
+        
+        # Convert to JSON-serializable format
+        response_data = {
+            "success": True,
+            "encrypted_data": {
+                "ciphertext": encrypted_message.ciphertext,
+                "metadata": {
+                    "security_level": encrypted_message.metadata.security_level,
+                    "algorithm": encrypted_message.metadata.algorithm,
+                    "key_source": encrypted_message.metadata.key_source,
+                    "timestamp": encrypted_message.metadata.timestamp,
+                    "message_id": encrypted_message.metadata.message_id,
+                    "sender": encrypted_message.metadata.sender,
+                    "recipient": encrypted_message.metadata.recipient,
+                    "key_ids": encrypted_message.metadata.key_ids,
+                    "integrity_hash": encrypted_message.metadata.integrity_hash,
+                    "quantum_resistant": encrypted_message.metadata.quantum_resistant,
+                    "etsi_compliant": encrypted_message.metadata.etsi_compliant
+                },
+                "attachments": encrypted_message.attachments,
+                "mime_structure": encrypted_message.mime_structure
+            }
+        }
+        
+        print(f"✅ Message encrypted with Level {data['security_level']}: {encrypted_message.metadata.algorithm}")
+        return jsonify(response_data), 200
+        
+    except Exception as e:
+        print(f"❌ Encryption error: {e}")
+        return jsonify({"error": str(e), "success": False}), 500
+
+@app.route('/api/decrypt', methods=['POST'])
+def decrypt_message():
+    """Decrypt message using stored keys"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        if 'encrypted_data' not in data:
+            return jsonify({"error": "Missing encrypted_data"}), 400
+        
+        # Get shared encryption instance
+        from encryption import EncryptedMessage, EncryptionMetadata
+        encryptor = get_encryptor()
+        
+        # Reconstruct EncryptedMessage object
+        encrypted_data = data['encrypted_data']
+        metadata = EncryptionMetadata(
+            security_level=encrypted_data['metadata']['security_level'],
+            algorithm=encrypted_data['metadata']['algorithm'],
+            key_source=encrypted_data['metadata']['key_source'],
+            timestamp=encrypted_data['metadata']['timestamp'],
+            message_id=encrypted_data['metadata']['message_id'],
+            sender=encrypted_data['metadata']['sender'],
+            recipient=encrypted_data['metadata']['recipient'],
+            key_ids=encrypted_data['metadata']['key_ids'],
+            integrity_hash=encrypted_data['metadata']['integrity_hash'],
+            quantum_resistant=encrypted_data['metadata']['quantum_resistant'],
+            etsi_compliant=encrypted_data['metadata']['etsi_compliant']
+        )
+        
+        encrypted_message = EncryptedMessage(
+            ciphertext=encrypted_data['ciphertext'],
+            metadata=metadata,
+            attachments=encrypted_data.get('attachments', []),
+            mime_structure=encrypted_data.get('mime_structure', '')
+        )
+        
+        # Decrypt the message
+        plaintext = encryptor.decrypt_message(encrypted_message)
+        
+        response_data = {
+            "success": True,
+            "plaintext": plaintext,
+            "metadata": {
+                "security_level": metadata.security_level,
+                "algorithm": metadata.algorithm,
+                "decryption_timestamp": datetime.now().isoformat()
+            }
+        }
+        
+        print(f"✅ Message decrypted from Level {metadata.security_level}: {metadata.algorithm}")
+        return jsonify(response_data), 200
+        
+    except Exception as e:
+        print(f"❌ Decryption error: {e}")
+        return jsonify({"error": str(e), "success": False}), 500
+
+@app.route('/api/encrypt/levels', methods=['GET'])
+def get_encryption_levels():
+    """Get available encryption levels and their capabilities"""
+    try:
+        encryptor = get_encryptor()
+        
+        # Get security analysis
+        analysis = encryptor.get_security_analysis()
+        
+        response_data = {
+            "success": True,
+            "encryption_levels": analysis["encryption_levels"],
+            "system_capabilities": analysis["system_capabilities"],
+            "real_pqc_available": encryptor.real_pqc is not None,
+            "api_connected": True
+        }
+        
+        return jsonify(response_data), 200
+        
+    except Exception as e:
+        print(f"❌ Encryption levels error: {e}")
+        return jsonify({"error": str(e), "success": False}), 500
+
 @app.route('/api/hybrid/key/<key_id>', methods=['GET'])
 def get_hybrid_key(key_id):
     """Get hybrid key by ID (without the actual key material)"""
@@ -1281,3 +1438,4 @@ if __name__ == '__main__':
             port=FLASK_CONFIG['port'],
             debug=FLASK_CONFIG['debug']
         )
+
