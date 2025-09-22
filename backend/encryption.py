@@ -109,6 +109,9 @@ class QuMailMultiLevelEncryption:
         # Hybrid key storage for Level 2 decryption (in real system, keys would be shared securely)
         self._hybrid_key_storage = {}
         
+        # ML-KEM shared secret storage for Level 3 decryption
+        self._mlkem_shared_secret_storage = {}
+        
         # Import requests for API calls
         try:
             import requests
@@ -605,6 +608,11 @@ class QuMailMultiLevelEncryption:
         # Sign with real ML-DSA-65
         signature = self.real_pqc.pqc.sign(sig_private_key, message_hash)
         
+        # Store ML-KEM shared secret for decryption
+        shared_secret_id = f"level3_{message_id}_{int(datetime.now().timestamp() * 1000)}"
+        self._mlkem_shared_secret_storage[shared_secret_id] = mlkem_shared_secret
+        logger.debug(f"Stored ML-KEM shared secret for decryption: {shared_secret_id}")
+        
         # Encrypt plaintext with real AES-256-GCM using shared secret
         plaintext_bytes = plaintext.encode('utf-8')
         ciphertext_bytes, nonce, tag = self.real_pqc.pqc.encrypt_aes_gcm(plaintext_bytes, mlkem_shared_secret)
@@ -629,6 +637,7 @@ class QuMailMultiLevelEncryption:
                 "sig_public_key": base64.b64encode(sig_public_key).decode('utf-8'),
                 "sig_private_key": base64.b64encode(sig_private_key).decode('utf-8'),
                 "signature": base64.b64encode(signature).decode('utf-8'),
+                "shared_secret_id": shared_secret_id,
                 "real_pqc_used": True
             },
             integrity_hash=hashlib.sha256(plaintext_bytes).hexdigest(),
@@ -652,43 +661,53 @@ class QuMailMultiLevelEncryption:
         )
     
     def _decrypt_level3_hybrid_pqc(self, encrypted_message: EncryptedMessage) -> str:
-        """Decrypt Level 3: Hybrid PQC message"""
+        """Decrypt Level 3: Hybrid PQC message with real ML-KEM and ML-DSA"""
         logger.info("🔓 Level 3: Hybrid PQC decryption")
         
-        # Get ML-KEM keypair and encapsulated secret
-        mlkem_keypair_id = encrypted_message.metadata.key_ids.get("mlkem_keypair")
-        encaps_secret_id = encrypted_message.metadata.key_ids.get("encapsulated_secret")
+        if not self.real_pqc:
+            raise QuMailEncryptionError("Real PQC not available for Level 3 decryption")
         
-        # Decapsulate shared secret
-        shared_secret_data = self._mlkem_decapsulate(mlkem_keypair_id, encaps_secret_id)
-        if not shared_secret_data:
-            raise QuMailEncryptionError("Failed to decapsulate ML-KEM shared secret")
+        # Get stored ML-KEM shared secret
+        shared_secret_id = encrypted_message.metadata.key_ids.get("shared_secret_id")
+        if not shared_secret_id or shared_secret_id not in self._mlkem_shared_secret_storage:
+            raise QuMailEncryptionError(f"ML-KEM shared secret not found: {shared_secret_id}")
         
-        shared_secret = base64.b64decode(shared_secret_data['shared_secret_b64'])
+        mlkem_shared_secret = self._mlkem_shared_secret_storage[shared_secret_id]
+        logger.debug(f"Retrieved ML-KEM shared secret: {shared_secret_id}")
         
-        # Derive AES key
-        aes_key = HKDF(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=None,
-            info=b'QuMail Level 3 AES Key',
-            backend=self.backend
-        ).derive(shared_secret)
-        
-        # Decrypt ciphertext
+        # Decrypt ciphertext using real AES-256-GCM
         encrypted_data = base64.b64decode(encrypted_message.ciphertext.encode('utf-8'))
-        iv = encrypted_data[:12]
-        ciphertext = encrypted_data[12:-16]
-        auth_tag = encrypted_data[-16:]
         
-        cipher = Cipher(algorithms.AES(aes_key), modes.GCM(iv, auth_tag), backend=self.backend)
-        decryptor = cipher.decryptor()
+        if len(encrypted_data) < 28:  # 12 bytes nonce + 16 bytes tag
+            raise QuMailEncryptionError("Invalid ciphertext for AES-256-GCM decryption")
         
-        plaintext_bytes = decryptor.update(ciphertext) + decryptor.finalize()
+        nonce = encrypted_data[:12]
+        tag = encrypted_data[12:28]
+        ciphertext = encrypted_data[28:]
+        
+        # Use real PQC for AES-256-GCM decryption
+        plaintext_bytes = self.real_pqc.pqc.decrypt_aes_gcm(ciphertext, mlkem_shared_secret, nonce, tag)
         plaintext = plaintext_bytes.decode('utf-8')
         
-        # Verify EdDSA signature (if available)
-        self._verify_eddsa_signature(plaintext_bytes, encrypted_message.metadata)
+        # Verify ML-DSA-65 signature
+        message_hash = hashlib.sha256(plaintext_bytes).digest()
+        
+        # Get signature components
+        sig_public_key_b64 = encrypted_message.metadata.key_ids.get("sig_public_key", "")
+        signature_b64 = encrypted_message.metadata.key_ids.get("signature", "")
+        
+        if sig_public_key_b64 and signature_b64:
+            sig_public_key = base64.b64decode(sig_public_key_b64)
+            signature = base64.b64decode(signature_b64)
+            
+            # Verify with real ML-DSA-65
+            is_valid = self.real_pqc.pqc.verify(sig_public_key, message_hash, signature)
+            if not is_valid:
+                logger.warning("ML-DSA-65 signature verification failed")
+            else:
+                logger.info("✅ ML-DSA-65 signature verified successfully")
+        else:
+            logger.warning("Signature components not found in metadata")
         
         logger.info("✅ Level 3 decryption complete")
         return plaintext
