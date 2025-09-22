@@ -106,6 +106,9 @@ class QuMailMultiLevelEncryption:
         # QKD key storage for Level 1 OTP (in real system, keys would be shared via quantum channel)
         self._qkd_key_storage = {}
         
+        # Hybrid key storage for Level 2 decryption (in real system, keys would be shared securely)
+        self._hybrid_key_storage = {}
+        
         # Import requests for API calls
         try:
             import requests
@@ -474,6 +477,11 @@ class QuMailMultiLevelEncryption:
         hybrid_key = base64.b64decode(hybrid_key_data['derived_key_b64'])
         key_ids = hybrid_key_data.get('component_info', {})
         
+        # Store hybrid key for decryption
+        hybrid_key_id = hybrid_key_data['hybrid_key_id']
+        self._hybrid_key_storage[hybrid_key_id] = hybrid_key
+        logger.debug(f"Stored hybrid key for decryption: {hybrid_key_id}")
+        
         # Use real AES-256-GCM encryption
         if self.real_pqc:
             plaintext_bytes = plaintext.encode('utf-8')
@@ -529,21 +537,42 @@ class QuMailMultiLevelEncryption:
         
         # Get hybrid key
         hybrid_key_id = encrypted_message.metadata.key_ids.get("hybrid_key")
-        hybrid_key_data = self._get_hybrid_key(hybrid_key_id)
         
-        if not hybrid_key_data:
-            raise QuMailEncryptionError(f"Hybrid key not found: {hybrid_key_id}")
+        # Check if we have the hybrid key stored locally (real PQC case)
+        if hybrid_key_id in self._hybrid_key_storage:
+            hybrid_key = self._hybrid_key_storage[hybrid_key_id]
+            logger.debug(f"Retrieved stored hybrid key: {hybrid_key_id}")
+        else:
+            # Try to get from API (fallback case)
+            hybrid_key_data = self._get_hybrid_key(hybrid_key_id)
+            if not hybrid_key_data:
+                raise QuMailEncryptionError(f"Hybrid key not found: {hybrid_key_id}")
+            hybrid_key = base64.b64decode(hybrid_key_data['derived_key_b64'])
         
-        hybrid_key = base64.b64decode(hybrid_key_data['derived_key_b64'])
+        # Check if we used real AES-256-GCM or Fernet
+        algorithm = encrypted_message.metadata.algorithm
+        real_pqc_used = encrypted_message.metadata.key_ids.get('real_pqc_used', False)
         
-        # Recreate Fernet cipher
-        fernet_key = base64.urlsafe_b64encode(hybrid_key[:32])
-        fernet = Fernet(fernet_key)
-        
-        # Decrypt ciphertext
+        # Decrypt based on algorithm used
         ciphertext_bytes = base64.b64decode(encrypted_message.ciphertext.encode('utf-8'))
-        plaintext_bytes = fernet.decrypt(ciphertext_bytes)
-        plaintext = plaintext_bytes.decode('utf-8')
+        
+        if real_pqc_used and self.real_pqc and "Real-PQC" in algorithm:
+            # Real AES-256-GCM decryption
+            if len(ciphertext_bytes) < 28:  # 12 bytes nonce + 16 bytes tag
+                raise QuMailEncryptionError("Invalid ciphertext for AES-256-GCM decryption")
+            
+            nonce = ciphertext_bytes[:12]
+            tag = ciphertext_bytes[12:28]
+            ciphertext = ciphertext_bytes[28:]
+            
+            plaintext_bytes = self.real_pqc.pqc.decrypt_aes_gcm(ciphertext, hybrid_key, nonce, tag)
+            plaintext = plaintext_bytes.decode('utf-8')
+        else:
+            # Fernet decryption (fallback)
+            fernet_key = base64.urlsafe_b64encode(hybrid_key[:32])
+            fernet = Fernet(fernet_key)
+            plaintext_bytes = fernet.decrypt(ciphertext_bytes)
+            plaintext = plaintext_bytes.decode('utf-8')
         
         logger.info("✅ Level 2 decryption complete")
         return plaintext
