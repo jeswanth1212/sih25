@@ -562,6 +562,172 @@ class QuMailEmailReceiver:
             logger.error(f"❌ Email parsing error: {e}")
             return None
     
+    def extract_email_content(self, email_msg: email.message.EmailMessage) -> str:
+        """
+        Extract email content from parsed email message
+        Prefers plain text, falls back to HTML, then to any text content
+        
+        Args:
+            email_msg: Parsed email message
+            
+        Returns:
+            str: Extracted email content
+        """
+        try:
+            content = ""
+            
+            if email_msg.is_multipart():
+                # Handle multipart emails
+                plain_text = ""
+                html_text = ""
+                
+                for part in email_msg.walk():
+                    content_type = part.get_content_type()
+                    content_disposition = str(part.get("Content-Disposition", ""))
+                    
+                    # Skip attachments
+                    if "attachment" in content_disposition:
+                        continue
+                    
+                    if content_type == "text/plain":
+                        try:
+                            payload = part.get_payload(decode=True)
+                            if payload:
+                                plain_text = payload.decode('utf-8', errors='ignore')
+                        except Exception as e:
+                            logger.warning(f"⚠️ Error decoding plain text part: {e}")
+                    
+                    elif content_type == "text/html":
+                        try:
+                            payload = part.get_payload(decode=True)
+                            if payload:
+                                html_text = payload.decode('utf-8', errors='ignore')
+                        except Exception as e:
+                            logger.warning(f"⚠️ Error decoding HTML part: {e}")
+                
+                # Prefer plain text, fallback to HTML
+                if plain_text.strip():
+                    content = plain_text
+                elif html_text.strip():
+                    # Convert HTML to plain text for better readability
+                    content = self.html_to_plain_text(html_text)
+                else:
+                    content = "No readable content found"
+                    
+            else:
+                # Handle single-part emails
+                content_type = email_msg.get_content_type()
+                try:
+                    payload = email_msg.get_payload(decode=True)
+                    if payload:
+                        raw_content = payload.decode('utf-8', errors='ignore')
+                        
+                        if content_type == "text/html":
+                            content = self.html_to_plain_text(raw_content)
+                        else:
+                            content = raw_content
+                    else:
+                        content = "No content found"
+                except Exception as e:
+                    logger.warning(f"⚠️ Error decoding single-part email: {e}")
+                    content = "Error reading email content"
+            
+            return content.strip() if content else "No content available"
+            
+        except Exception as e:
+            logger.error(f"❌ Error extracting email content: {e}")
+            return "Error reading email content"
+    
+    def html_to_plain_text(self, html_content: str) -> str:
+        """
+        Convert HTML content to plain text for better readability
+        
+        Args:
+            html_content: HTML content string
+            
+        Returns:
+            str: Plain text content
+        """
+        try:
+            import re
+            
+            # Remove HTML tags but preserve line breaks
+            text = re.sub(r'<br\s*/?>', '\n', html_content, flags=re.IGNORECASE)
+            text = re.sub(r'</p>', '\n\n', text, flags=re.IGNORECASE)
+            text = re.sub(r'<[^>]+>', '', text)
+            
+            # Decode HTML entities
+            text = text.replace('&nbsp;', ' ')
+            text = text.replace('&amp;', '&')
+            text = text.replace('&lt;', '<')
+            text = text.replace('&gt;', '>')
+            text = text.replace('&quot;', '"')
+            text = text.replace('&#39;', "'")
+            
+            # Normalize whitespace
+            text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)  # Max 2 consecutive line breaks
+            text = re.sub(r'[ \t]+', ' ', text)  # Normalize spaces and tabs
+            text = text.strip()
+            
+            return text
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Error converting HTML to plain text: {e}")
+            return html_content  # Return original if conversion fails
+    
+    def decode_header_field(self, header_value: str) -> str:
+        """
+        Decode email header field that may contain encoded characters
+        
+        Args:
+            header_value: Raw header value
+            
+        Returns:
+            str: Decoded header value
+        """
+        try:
+            if not header_value:
+                return 'Unknown'
+            
+            # Handle encoded headers (RFC 2047)
+            from email.header import decode_header
+            
+            decoded_parts = decode_header(header_value)
+            decoded_string = ""
+            
+            for part, encoding in decoded_parts:
+                if isinstance(part, bytes):
+                    if encoding:
+                        try:
+                            decoded_string += part.decode(encoding)
+                        except (UnicodeDecodeError, LookupError):
+                            # Fallback to utf-8 if specified encoding fails
+                            try:
+                                decoded_string += part.decode('utf-8')
+                            except UnicodeDecodeError:
+                                # Last resort: decode with errors='ignore'
+                                decoded_string += part.decode('utf-8', errors='ignore')
+                    else:
+                        # No encoding specified, try common encodings
+                        for enc in ['utf-8', 'latin-1', 'ascii']:
+                            try:
+                                decoded_string += part.decode(enc)
+                                break
+                            except UnicodeDecodeError:
+                                continue
+                        else:
+                            # If all encodings fail, use utf-8 with error handling
+                            decoded_string += part.decode('utf-8', errors='ignore')
+                else:
+                    # Already a string
+                    decoded_string += str(part)
+            
+            return decoded_string.strip()
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Error decoding header field: {e}")
+            return str(header_value) if header_value else 'Unknown'
+    
     def extract_qumail_data(self, email_msg: email.message.EmailMessage) -> Tuple[bool, Dict[str, Any]]:
         """
         Extract QuMail encrypted data from email
@@ -714,10 +880,10 @@ class QuMailEmailReceiver:
                     if not email_msg:
                         continue
                     
-                    # Extract basic email info
-                    sender = email_msg.get('From', 'Unknown')
-                    recipient = email_msg.get('To', 'Unknown')
-                    subject = email_msg.get('Subject', 'No Subject')
+                    # Extract basic email info with proper encoding handling
+                    sender = self.decode_header_field(email_msg.get('From', 'Unknown'))
+                    recipient = self.decode_header_field(email_msg.get('To', 'Unknown'))
+                    subject = self.decode_header_field(email_msg.get('Subject', 'No Subject'))
                     date = email_msg.get('Date', '')
                     
                     # Check if this is a QuMail encrypted email
@@ -753,14 +919,8 @@ class QuMailEmailReceiver:
                             received_email.error = "Decryption failed"
                             logger.warning(f"⚠️ QuMail email decryption failed")
                     else:
-                        # Regular email - extract plain text content
-                        if email_msg.is_multipart():
-                            for part in email_msg.walk():
-                                if part.get_content_type() == "text/plain":
-                                    received_email.original_content = part.get_payload(decode=True).decode('utf-8', errors='ignore')
-                                    break
-                        else:
-                            received_email.original_content = email_msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+                        # Regular email - extract content (prefer plain text, fallback to HTML)
+                        received_email.original_content = self.extract_email_content(email_msg)
                     
                     received_emails.append(received_email)
                     

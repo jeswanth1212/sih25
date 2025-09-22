@@ -477,25 +477,7 @@ if (window.guiTester && window.guiTester.mockEncryption) {
     console.log('✅ Mock encryption replaced with real email sending');
 }
 
-// Add email configuration button to UI
-document.addEventListener('DOMContentLoaded', () => {
-    // Add email config button to the top bar
-    const configButton = document.createElement('button');
-    configButton.id = 'email-config-btn';
-    configButton.className = 'fixed top-4 left-4 z-50 glass-dark border border-violet-500/30 rounded-xl px-4 py-2 text-violet-300 hover:bg-violet-500/20 transition-all duration-200 flex items-center space-x-2';
-    configButton.innerHTML = `
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-        </svg>
-        <span>Gmail Setup</span>
-    `;
-    
-    configButton.addEventListener('click', () => {
-        emailIntegration.showCredentialsModal();
-    });
-    
-    document.body.appendChild(configButton);
-});
+// Email configuration will be handled by the profile icon
 
 console.log(`
 📧 QuMail Email Integration Initialized

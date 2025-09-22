@@ -51,18 +51,34 @@ class QuMailEmailManager {
         const maxAttempts = 50;
         
         while (attempts < maxAttempts) {
-            if (window.emailIntegration && window.emailIntegration.isReady()) {
-                this.emailIntegration = window.emailIntegration;
-                console.log('✅ Email integration connected');
-                return;
+            if (window.emailIntegration) {
+                // Check if connected to backend
+                if (window.emailIntegration.isConnected) {
+                    this.emailIntegration = window.emailIntegration;
+                    console.log('✅ Email integration connected to backend');
+                    
+                    // Check if credentials are set
+                    if (window.emailIntegration.credentials) {
+                        console.log('✅ Email credentials configured');
+                        return;
+                    } else {
+                        console.log('⚠️ Email integration connected but credentials not set');
+                        console.log('💡 Please configure Gmail App Password in the settings');
+                        // Still return - we can show a message to configure credentials
+                        return;
+                    }
+                } else {
+                    console.log(`⏳ Waiting for backend connection... (${attempts + 1}/${maxAttempts})`);
+                }
+            } else {
+                console.log(`⏳ Waiting for email integration module... (${attempts + 1}/${maxAttempts})`);
             }
             
-            console.log(`⏳ Waiting for email integration... (${attempts + 1}/${maxAttempts})`);
             await new Promise(resolve => setTimeout(resolve, 100));
             attempts++;
         }
         
-        throw new Error('❌ Email integration not available');
+        throw new Error('❌ Email integration not available - Backend may not be running');
     }
 
     /**
@@ -200,6 +216,18 @@ class QuMailEmailManager {
         this.showLoading();
         
         try {
+            // Check if email integration is ready
+            if (!this.emailIntegration || !this.emailIntegration.isReady()) {
+                if (!this.emailIntegration) {
+                    throw new Error('Email integration not available');
+                } else if (!this.emailIntegration.isConnected) {
+                    throw new Error('Backend not connected. Please start the backend server.');
+                } else if (!this.emailIntegration.credentials) {
+                    this.showCredentialsRequired();
+                    return;
+                }
+            }
+            
             // Fetch emails from the specific folder
             let result;
             const limit = 10; // Fetch up to 10 emails
@@ -322,11 +350,11 @@ class QuMailEmailManager {
         emailDiv.className = 'email-thumbnail p-3 rounded-lg hover:bg-violet-500/10 cursor-pointer transition-all duration-200 border-b border-violet-500/10';
         emailDiv.dataset.emailIndex = index;
         
-        // Extract email data
-        const from = email.from || 'Unknown Sender';
-        const subject = email.subject || 'No Subject';
-        const snippet = email.snippet || email.body?.substring(0, 60) || 'No content';
-        const date = email.date ? new Date(email.date) : null;
+        // Extract email data with proper field mapping from backend
+        const from = email.sender || email.from || 'Unknown Sender';
+        const subject = this.decodeUtf8String(email.subject || 'No Subject');
+        const snippet = this.getEmailSnippet(email);
+        const date = email.received_at ? new Date(email.received_at) : (email.date ? new Date(email.date) : null);
         const isQuMail = email.is_qumail || false;
         
         // Get sender initials for avatar
@@ -389,6 +417,65 @@ class QuMailEmailManager {
         });
         
         return emailDiv;
+    }
+
+    /**
+     * Get email snippet/preview text
+     */
+    getEmailSnippet(email) {
+        // Try different content fields from backend
+        const content = email.decrypted_content || 
+                       email.original_content || 
+                       email.body || 
+                       email.content || 
+                       email.text || 
+                       email.snippet || 
+                       '';
+        
+        if (!content) return 'No content';
+        
+        // Clean and truncate content
+        const cleanContent = this.decodeUtf8String(content)
+            .replace(/<[^>]*>/g, '') // Remove HTML tags
+            .replace(/\s+/g, ' ') // Normalize whitespace
+            .trim();
+        
+        return cleanContent.length > 60 ? cleanContent.substring(0, 60) + '...' : cleanContent;
+    }
+
+    /**
+     * Format email content for better readability
+     */
+    formatEmailContent(content) {
+        if (!content) return 'No content';
+        
+        // Decode UTF-8 strings and clean up
+        let formattedContent = this.decodeUtf8String(content);
+        
+        // Handle HTML content
+        if (formattedContent.includes('<') && formattedContent.includes('>')) {
+            // Convert HTML to plain text but preserve line breaks
+            formattedContent = formattedContent
+                .replace(/<br\s*\/?>/gi, '\n')
+                .replace(/<\/p>/gi, '\n\n')
+                .replace(/<[^>]*>/g, '') // Remove all HTML tags
+                .replace(/&nbsp;/g, ' ')
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'");
+        }
+        
+        // Normalize whitespace and line breaks
+        formattedContent = formattedContent
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n')
+            .replace(/\n{3,}/g, '\n\n') // Max 2 consecutive line breaks
+            .replace(/[ \t]+/g, ' ') // Normalize spaces and tabs
+            .trim();
+        
+        return this.escapeHtml(formattedContent);
     }
 
     /**
@@ -470,19 +557,39 @@ class QuMailEmailManager {
     getDisplayName(from) {
         if (!from) return 'Unknown Sender';
         
-        // If it's a name <email> format, extract the name
-        const nameMatch = from.match(/^([^<]+)<.*>$/);
+        // Clean up the input first
+        let cleanFrom = this.decodeUtf8String(from).trim();
+        
+        // Handle quoted names like "John Doe" <email@domain.com>
+        const quotedNameMatch = cleanFrom.match(/^"([^"]+)"\s*<.*>$/);
+        if (quotedNameMatch) {
+            return quotedNameMatch[1].trim();
+        }
+        
+        // Handle name <email> format, extract the name
+        const nameMatch = cleanFrom.match(/^([^<]+)<.*>$/);
         if (nameMatch) {
-            return nameMatch[1].trim();
+            const name = nameMatch[1].trim();
+            // Remove quotes if present
+            return name.replace(/^["']|["']$/g, '').trim();
         }
         
         // If it's just an email, use the part before @
-        const emailMatch = from.match(/^([^@]+)@/);
+        const emailMatch = cleanFrom.match(/^([^@]+)@/);
         if (emailMatch) {
-            return emailMatch[1].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            const username = emailMatch[1];
+            // Convert dots and underscores to spaces and capitalize
+            return username.replace(/[._-]/g, ' ')
+                          .replace(/\b\w/g, l => l.toUpperCase())
+                          .trim();
         }
         
-        return from;
+        // If it looks like a name already, return as is
+        if (cleanFrom.includes(' ') && !cleanFrom.includes('@')) {
+            return cleanFrom;
+        }
+        
+        return cleanFrom;
     }
 
     /**
@@ -511,7 +618,7 @@ class QuMailEmailManager {
         if (!subjectElement || !contentElement) return;
         
         // Update subject
-        subjectElement.textContent = email.subject || 'No Subject';
+        subjectElement.textContent = this.decodeUtf8String(email.subject || 'No Subject');
         
         // Build full email content
         let emailHtml = this.buildEmailHtml(email);
@@ -524,10 +631,10 @@ class QuMailEmailManager {
      * Build full email HTML
      */
     buildEmailHtml(email) {
-        // Extract email data with better fallbacks
-        const from = email.from || email.sender || 'Unknown Sender';
-        const to = email.to || email.recipient || email.recipients || 'Unknown Recipient';
-        const date = email.date || email.timestamp || email.received_at;
+        // Extract email data with proper field mapping from backend
+        const from = email.sender || email.from || 'Unknown Sender';
+        const to = email.recipient || email.to || email.recipients || 'Unknown Recipient';
+        const date = email.received_at || email.date || email.timestamp;
         const formattedDate = date ? new Date(date).toLocaleString() : 'Unknown Date';
         const isQuMail = email.is_qumail || false;
         
@@ -573,7 +680,7 @@ class QuMailEmailManager {
                             Algorithm: ${email.algorithm || 'Unknown'}
                         </div>
                     </div>
-                    <div class="text-white whitespace-pre-wrap">${this.escapeHtml(email.body || email.content || email.text || 'No content')}</div>
+                    <div class="text-white whitespace-pre-wrap">${this.formatEmailContent(email.decrypted_content || email.original_content || email.body || email.content || email.text || 'No content')}</div>
                 `;
             } else if (email.decryption_successful === false) {
                 content += `
@@ -588,7 +695,7 @@ class QuMailEmailManager {
                     </div>
                     <div class="bg-gray-800/50 p-4 rounded-lg">
                         <h4 class="text-violet-300 font-medium mb-2">Encrypted Content:</h4>
-                        <pre class="text-gray-300 text-xs whitespace-pre-wrap font-mono">${this.escapeHtml(email.body || email.content || email.text || 'No content available')}</pre>
+                        <pre class="text-gray-300 text-xs whitespace-pre-wrap font-mono">${this.escapeHtml(email.original_content || email.body || email.content || email.text || 'No content available')}</pre>
                     </div>
                 `;
             } else {
@@ -602,14 +709,14 @@ class QuMailEmailManager {
                     </div>
                     <div class="bg-gray-800/50 p-4 rounded-lg">
                         <h4 class="text-violet-300 font-medium mb-2">Encrypted Content:</h4>
-                        <pre class="text-gray-300 text-xs whitespace-pre-wrap font-mono">${this.escapeHtml(email.body || email.content || email.text || 'No content available')}</pre>
+                        <pre class="text-gray-300 text-xs whitespace-pre-wrap font-mono">${this.escapeHtml(email.original_content || email.body || email.content || email.text || 'No content available')}</pre>
                     </div>
                 `;
             }
         } else {
-            // Regular email
-            const emailBody = email.body || email.content || email.text || email.snippet || 'No content available';
-            content += `<div class="text-white whitespace-pre-wrap">${this.escapeHtml(emailBody)}</div>`;
+            // Regular email - use proper content field from backend
+            const emailBody = email.original_content || email.body || email.content || email.text || email.snippet || 'No content available';
+            content += `<div class="text-white whitespace-pre-wrap">${this.formatEmailContent(emailBody)}</div>`;
         }
         
         content += '</div>';
@@ -626,6 +733,26 @@ class QuMailEmailManager {
             countElement.textContent = count.toString();
             countElement.style.display = count > 0 ? 'block' : 'none';
         }
+    }
+
+    /**
+     * Show credentials required message
+     */
+    showCredentialsRequired() {
+        if (!this.emailList) return;
+        
+        this.emailList.innerHTML = `
+            <div class="text-center py-8 text-violet-300">
+                <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                </svg>
+                <p class="text-lg font-medium">Gmail Configuration Required</p>
+                <p class="text-sm opacity-75 mb-4">Please configure your Gmail App Password to access emails</p>
+                <button onclick="window.quMailProfileManager?.showCenterModal()" class="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg transition-colors">
+                    Configure Gmail
+                </button>
+            </div>
+        `;
     }
 
     /**
@@ -653,6 +780,33 @@ class QuMailEmailManager {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    /**
+     * Decode UTF-8 encoded strings (like =?UTF-8?Q?...?=)
+     */
+    decodeUtf8String(str) {
+        if (!str) return '';
+        
+        // Check if it's a UTF-8 encoded string
+        if (str.includes('=?UTF-8?Q?') || str.includes('=?utf-8?q?')) {
+            try {
+                // Remove the encoding wrapper and decode
+                let decoded = str.replace(/=\?UTF-8\?Q\?/gi, '').replace(/\?=$/g, '');
+                // Replace =XX with actual characters
+                decoded = decoded.replace(/=([0-9A-F]{2})/gi, (match, hex) => {
+                    return String.fromCharCode(parseInt(hex, 16));
+                });
+                // Replace underscores with spaces
+                decoded = decoded.replace(/_/g, ' ');
+                return decoded;
+            } catch (e) {
+                console.warn('Failed to decode UTF-8 string:', str, e);
+                return str;
+            }
+        }
+        
+        return str;
     }
 
     /**
