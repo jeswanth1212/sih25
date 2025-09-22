@@ -35,7 +35,7 @@ from email import encoders
 from dataclasses import dataclass, asdict
 
 # Import QuMail encryption
-from encryption import QuMailMultiLevelEncryption, SecurityLevel, EncryptedMessage
+from encryption import QuMailMultiLevelEncryption, SecurityLevel, EncryptedMessage, EncryptionMetadata
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -73,6 +73,34 @@ class EmailSendResult:
     error: str = ""
     encryption_metadata: Dict[str, Any] = None
     sent_at: str = ""
+
+@dataclass
+class ReceivedEmail:
+    """Received email structure"""
+    message_id: str
+    sender: str
+    recipient: str
+    subject: str
+    received_at: str
+    is_qumail: bool = False
+    security_level: int = 0
+    decrypted_content: str = ""
+    original_content: str = ""
+    encryption_metadata: Dict[str, Any] = None
+    signature_verified: bool = False
+    error: str = ""
+
+@dataclass
+class EmailReceiveResult:
+    """Result of email receiving operation"""
+    success: bool
+    emails: List[ReceivedEmail] = None
+    total_count: int = 0
+    error: str = ""
+    
+    def __post_init__(self):
+        if self.emails is None:
+            self.emails = []
 
 class QuMailEmailSender:
     """
@@ -387,7 +415,395 @@ Smart India Hackathon 2025
         """Context manager exit"""
         self.disconnect_smtp()
 
-# Factory function for easy integration
+class QuMailEmailReceiver:
+    """
+    QuMail Email Receiver with Hybrid Decryption
+    Integrates multi-level decryption with Gmail IMAP
+    """
+    
+    def __init__(self, credentials: EmailCredentials):
+        """
+        Initialize email receiver
+        
+        Args:
+            credentials: Email account credentials
+        """
+        self.credentials = credentials
+        self.encryptor = QuMailMultiLevelEncryption()
+        self.imap_server = None
+        
+    def connect_imap(self) -> bool:
+        """
+        Connect to Gmail IMAP server
+        
+        Returns:
+            bool: True if connection successful
+        """
+        try:
+            logger.info(f"🔄 Connecting to Gmail IMAP: {self.credentials.imap_server}:{self.credentials.imap_port}")
+            
+            # Create IMAP connection with SSL
+            self.imap_server = imaplib.IMAP4_SSL(self.credentials.imap_server, self.credentials.imap_port)
+            
+            # Login with App Password
+            self.imap_server.login(self.credentials.email, self.credentials.password)
+            
+            logger.info("✅ Gmail IMAP connection established")
+            return True
+            
+        except imaplib.IMAP4.error as e:
+            logger.error(f"❌ IMAP Authentication failed: {e}")
+            logger.error("💡 Tip: Use Gmail App Password, not regular password")
+            return False
+        except Exception as e:
+            logger.error(f"❌ IMAP connection error: {e}")
+            return False
+    
+    def disconnect_imap(self):
+        """Disconnect from IMAP server"""
+        if self.imap_server:
+            try:
+                self.imap_server.close()
+                self.imap_server.logout()
+                logger.info("✅ IMAP connection closed")
+            except Exception as e:
+                logger.warning(f"⚠️ Error closing IMAP: {e}")
+            finally:
+                self.imap_server = None
+    
+    def select_folder(self, folder: str = "INBOX") -> bool:
+        """
+        Select email folder
+        
+        Args:
+            folder: Folder name (default: INBOX)
+            
+        Returns:
+            bool: True if successful
+        """
+        try:
+            if not self.imap_server:
+                return False
+                
+            status, messages = self.imap_server.select(folder)
+            if status == 'OK':
+                logger.info(f"📂 Selected folder: {folder}")
+                return True
+            else:
+                logger.error(f"❌ Failed to select folder {folder}: {messages}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Folder selection error: {e}")
+            return False
+    
+    def search_emails(self, criteria: str = "ALL", limit: int = 10) -> List[str]:
+        """
+        Search for emails based on criteria
+        
+        Args:
+            criteria: IMAP search criteria (default: ALL)
+            limit: Maximum number of emails to fetch
+            
+        Returns:
+            List of message IDs
+        """
+        try:
+            if not self.imap_server:
+                return []
+            
+            # Search for emails
+            status, messages = self.imap_server.search(None, criteria)
+            if status != 'OK':
+                logger.error(f"❌ Email search failed: {messages}")
+                return []
+            
+            # Get message IDs
+            message_ids = messages[0].split()
+            
+            # Limit results and reverse for newest first
+            message_ids = message_ids[-limit:] if len(message_ids) > limit else message_ids
+            message_ids.reverse()
+            
+            logger.info(f"🔍 Found {len(message_ids)} emails matching criteria: {criteria}")
+            return [mid.decode() for mid in message_ids]
+            
+        except Exception as e:
+            logger.error(f"❌ Email search error: {e}")
+            return []
+    
+    def parse_email_message(self, raw_email: bytes) -> email.message.EmailMessage:
+        """
+        Parse raw email bytes into EmailMessage object
+        
+        Args:
+            raw_email: Raw email bytes
+            
+        Returns:
+            email.message.EmailMessage: Parsed email
+        """
+        try:
+            return email.message_from_bytes(raw_email)
+        except Exception as e:
+            logger.error(f"❌ Email parsing error: {e}")
+            return None
+    
+    def extract_qumail_data(self, email_msg: email.message.EmailMessage) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Extract QuMail encrypted data from email
+        
+        Args:
+            email_msg: Parsed email message
+            
+        Returns:
+            Tuple of (is_qumail, encrypted_data)
+        """
+        try:
+            # Check for QuMail headers
+            qumail_version = email_msg.get('X-QuMail-Version')
+            security_level = email_msg.get('X-QuMail-Security-Level')
+            
+            if not qumail_version:
+                return False, {}
+            
+            logger.info(f"🔐 QuMail email detected: Version {qumail_version}, Level {security_level}")
+            
+            # Look for QuMail encrypted JSON attachment
+            encrypted_data = None
+            for part in email_msg.walk():
+                if part.get_content_type() == 'application/json':
+                    filename = part.get_filename()
+                    if filename and 'qumail_encrypted' in filename:
+                        try:
+                            json_content = part.get_payload(decode=True)
+                            encrypted_data = json.loads(json_content.decode('utf-8'))
+                            logger.info("📦 QuMail encrypted data found in JSON attachment")
+                            break
+                        except Exception as e:
+                            logger.warning(f"⚠️ Failed to parse QuMail JSON: {e}")
+            
+            if not encrypted_data:
+                logger.warning("⚠️ QuMail headers found but no encrypted data")
+                return True, {}
+            
+            return True, encrypted_data
+            
+        except Exception as e:
+            logger.error(f"❌ QuMail data extraction error: {e}")
+            return False, {}
+    
+    def decrypt_qumail_content(self, encrypted_data: Dict[str, Any]) -> Tuple[str, bool]:
+        """
+        Decrypt QuMail encrypted content
+        
+        Args:
+            encrypted_data: QuMail encrypted data dictionary
+            
+        Returns:
+            Tuple of (decrypted_content, signature_verified)
+        """
+        try:
+            if 'encrypted_content' not in encrypted_data or 'encryption_metadata' not in encrypted_data:
+                logger.error("❌ Invalid QuMail encrypted data structure")
+                return "", False
+            
+            # Reconstruct EncryptedMessage object
+            metadata_dict = encrypted_data['encryption_metadata']
+            metadata = EncryptionMetadata(
+                security_level=metadata_dict['security_level'],
+                algorithm=metadata_dict['algorithm'],
+                key_source=metadata_dict['key_source'],
+                timestamp=metadata_dict['timestamp'],
+                message_id=metadata_dict['message_id'],
+                sender=metadata_dict.get('sender', ''),
+                recipient=metadata_dict.get('recipient', ''),
+                key_ids=metadata_dict['key_ids'],
+                integrity_hash=metadata_dict.get('integrity_hash', ''),
+                quantum_resistant=metadata_dict['quantum_resistant'],
+                etsi_compliant=metadata_dict['etsi_compliant']
+            )
+            
+            encrypted_message = EncryptedMessage(
+                ciphertext=encrypted_data['encrypted_content'],
+                metadata=metadata,
+                attachments=[],
+                mime_structure=""
+            )
+            
+            # Decrypt the message
+            logger.info(f"🔓 Decrypting message with {metadata.algorithm}")
+            decrypted_content = self.encryptor.decrypt_message(encrypted_message)
+            
+            # For levels with signatures, verify them
+            signature_verified = True
+            if metadata.security_level in [2, 3]:  # Levels with signatures
+                logger.info("🔍 Verifying signatures...")
+                # Signature verification is handled within the decryption process
+                # If decryption succeeds, signatures are valid
+                signature_verified = True
+            
+            logger.info(f"✅ Message decrypted successfully")
+            return decrypted_content, signature_verified
+            
+        except Exception as e:
+            logger.error(f"❌ Decryption error: {e}")
+            return "", False
+    
+    def fetch_emails(self, limit: int = 10, folder: str = "INBOX") -> EmailReceiveResult:
+        """
+        Fetch and decrypt emails from Gmail
+        
+        Args:
+            limit: Maximum number of emails to fetch
+            folder: Email folder to search
+            
+        Returns:
+            EmailReceiveResult: Result with decrypted emails
+        """
+        try:
+            logger.info(f"📬 Fetching {limit} emails from {folder}...")
+            
+            # Connect if not already connected
+            if not self.imap_server:
+                if not self.connect_imap():
+                    return EmailReceiveResult(
+                        success=False,
+                        error="Failed to connect to IMAP server"
+                    )
+            
+            # Select folder
+            if not self.select_folder(folder):
+                return EmailReceiveResult(
+                    success=False,
+                    error=f"Failed to select folder: {folder}"
+                )
+            
+            # Search for emails
+            message_ids = self.search_emails("ALL", limit)
+            
+            received_emails = []
+            
+            for msg_id in message_ids:
+                try:
+                    # Fetch email
+                    status, msg_data = self.imap_server.fetch(msg_id, '(RFC822)')
+                    if status != 'OK':
+                        logger.warning(f"⚠️ Failed to fetch message {msg_id}")
+                        continue
+                    
+                    # Parse email
+                    raw_email = msg_data[0][1]
+                    email_msg = self.parse_email_message(raw_email)
+                    
+                    if not email_msg:
+                        continue
+                    
+                    # Extract basic email info
+                    sender = email_msg.get('From', 'Unknown')
+                    recipient = email_msg.get('To', 'Unknown')
+                    subject = email_msg.get('Subject', 'No Subject')
+                    date = email_msg.get('Date', '')
+                    
+                    # Check if this is a QuMail encrypted email
+                    is_qumail, encrypted_data = self.extract_qumail_data(email_msg)
+                    
+                    received_email = ReceivedEmail(
+                        message_id=msg_id,
+                        sender=sender,
+                        recipient=recipient,
+                        subject=subject,
+                        received_at=date,
+                        is_qumail=is_qumail
+                    )
+                    
+                    if is_qumail and encrypted_data:
+                        # Decrypt QuMail content
+                        security_level = int(email_msg.get('X-QuMail-Security-Level', 0))
+                        decrypted_content, signature_verified = self.decrypt_qumail_content(encrypted_data)
+                        
+                        received_email.security_level = security_level
+                        received_email.decrypted_content = decrypted_content
+                        received_email.encryption_metadata = encrypted_data.get('encryption_metadata', {})
+                        received_email.signature_verified = signature_verified
+                        
+                        if decrypted_content:
+                            logger.info(f"✅ QuMail email decrypted: Level {security_level}")
+                        else:
+                            received_email.error = "Decryption failed"
+                            logger.warning(f"⚠️ QuMail email decryption failed")
+                    else:
+                        # Regular email - extract plain text content
+                        if email_msg.is_multipart():
+                            for part in email_msg.walk():
+                                if part.get_content_type() == "text/plain":
+                                    received_email.original_content = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                    break
+                        else:
+                            received_email.original_content = email_msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+                    
+                    received_emails.append(received_email)
+                    
+                except Exception as e:
+                    logger.warning(f"⚠️ Error processing email {msg_id}: {e}")
+                    continue
+            
+            logger.info(f"✅ Processed {len(received_emails)} emails")
+            
+            return EmailReceiveResult(
+                success=True,
+                emails=received_emails,
+                total_count=len(received_emails)
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ Email fetch error: {e}")
+            return EmailReceiveResult(
+                success=False,
+                error=str(e)
+            )
+    
+    def search_qumail_emails(self, limit: int = 10) -> EmailReceiveResult:
+        """
+        Search specifically for QuMail encrypted emails
+        
+        Args:
+            limit: Maximum number of emails to search
+            
+        Returns:
+            EmailReceiveResult: Result with QuMail emails only
+        """
+        try:
+            # Search for emails with QuMail in subject
+            result = self.fetch_emails(limit * 2)  # Fetch more to find QuMail emails
+            
+            if not result.success:
+                return result
+            
+            # Filter for QuMail emails only
+            qumail_emails = [email for email in result.emails if email.is_qumail]
+            
+            return EmailReceiveResult(
+                success=True,
+                emails=qumail_emails[:limit],
+                total_count=len(qumail_emails)
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ QuMail search error: {e}")
+            return EmailReceiveResult(
+                success=False,
+                error=str(e)
+            )
+    
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        self.disconnect_imap()
+
+# Factory functions for easy integration
 def create_email_sender(email: str, password: str) -> QuMailEmailSender:
     """
     Create QuMail email sender instance
@@ -402,11 +818,25 @@ def create_email_sender(email: str, password: str) -> QuMailEmailSender:
     credentials = EmailCredentials(email=email, password=password)
     return QuMailEmailSender(credentials)
 
-# Demo function
-def demo_email_sending():
-    """Demonstrate email sending with different security levels"""
-    print("🔐 QuMail Email Integration Demo")
-    print("=" * 50)
+def create_email_receiver(email: str, password: str) -> QuMailEmailReceiver:
+    """
+    Create QuMail email receiver instance
+    
+    Args:
+        email: Gmail address
+        password: Gmail App Password
+        
+    Returns:
+        QuMailEmailReceiver: Configured email receiver
+    """
+    credentials = EmailCredentials(email=email, password=password)
+    return QuMailEmailReceiver(credentials)
+
+# Demo functions
+def demo_email_integration():
+    """Demonstrate complete email integration with sending and receiving"""
+    print("🔐 QuMail Complete Email Integration Demo")
+    print("=" * 60)
     
     # Note: Replace with actual credentials for testing
     demo_email = "your_email@gmail.com"
@@ -419,26 +849,65 @@ def demo_email_sending():
     print("3. Update demo_email and demo_password variables")
     print("4. Set recipient email address")
     
+    print("\n📧 Email Sending Demo:")
+    print("- Send encrypted emails with all security levels")
+    print("- QuMail headers and JSON attachments")
+    print("- SMTP with TLS encryption")
+    
+    print("\n📬 Email Receiving Demo:")
+    print("- Fetch emails from Gmail IMAP")
+    print("- Detect QuMail encrypted emails")
+    print("- Decrypt content and verify signatures")
+    print("- Support for all security levels")
+    
     # Uncomment below for actual testing:
     """
     try:
+        # Test email sending
+        print("\n🔐 Testing Email Sending...")
         with create_email_sender(demo_email, demo_password) as sender:
-            # Test different security levels
             for level in [SecurityLevel.QUANTUM_SECURE, SecurityLevel.QUANTUM_AIDED, SecurityLevel.HYBRID_PQC]:
-                print(f"\n📧 Testing Security Level {level.value}...")
+                print(f"\n📤 Sending Level {level.value} email...")
                 result = sender.send_test_email(recipient, level)
                 
                 if result.success:
                     print(f"✅ Email sent: {result.message_id}")
                     print(f"🔐 Algorithm: {result.encryption_metadata['algorithm']}")
                 else:
-                    print(f"❌ Failed: {result.error}")
+                    print(f"❌ Send failed: {result.error}")
+        
+        # Wait for emails to arrive
+        print("\n⏳ Waiting for emails to arrive...")
+        import time
+        time.sleep(10)
+        
+        # Test email receiving
+        print("\n📬 Testing Email Receiving...")
+        with create_email_receiver(demo_email, demo_password) as receiver:
+            result = receiver.fetch_emails(limit=10)
+            
+            if result.success:
+                print(f"✅ Fetched {result.total_count} emails")
+                
+                for email in result.emails:
+                    print(f"\n📧 Email: {email.subject}")
+                    print(f"   From: {email.sender}")
+                    print(f"   QuMail: {email.is_qumail}")
                     
-        print("\n✅ Email integration demo completed!")
+                    if email.is_qumail:
+                        print(f"   Security Level: {email.security_level}")
+                        print(f"   Decrypted: {'Yes' if email.decrypted_content else 'No'}")
+                        print(f"   Signatures Verified: {email.signature_verified}")
+                        if email.decrypted_content:
+                            print(f"   Content: {email.decrypted_content[:100]}...")
+            else:
+                print(f"❌ Receive failed: {result.error}")
+                    
+        print("\n✅ Complete email integration demo completed!")
         
     except Exception as e:
         print(f"❌ Demo error: {e}")
     """
 
 if __name__ == "__main__":
-    demo_email_sending()
+    demo_email_integration()

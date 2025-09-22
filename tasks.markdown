@@ -246,7 +246,7 @@
   *Contribution*: Ensures robust encryption.
 
 ## Step 6: Email Integration (SMTP/IMAP) (~3-4 hours, 1 member, CPU-only)
-- [ ] **Task 34: Send Emails with smtplib**  
+- [x] **Task 34: Send Emails with smtplib**  
   *Description*: Apply hybrid encryption (Levels 1-3) before sending.  
   *Prompt*: “Generate Python code for Gmail SMTP with hybrid encryption (Level 1: Quantum Secure, Level 2: Quantum-aided AES, Level 3: Hybrid PQC) applied to content and attachments.”  
   *Action*: Save in `/backend/email.py`, integrate with `encryption.py`.  

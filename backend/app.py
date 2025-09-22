@@ -307,6 +307,8 @@ def home():
             "email_endpoints": {
                 "send_email": "/api/email/send",
                 "send_test_email": "/api/email/test",
+                "receive_emails": "/api/email/receive",
+                "receive_qumail_emails": "/api/email/receive/qumail",
                 "email_status": "/api/email/status"
             },
             "ecdh": {
@@ -1556,6 +1558,134 @@ def email_status():
         return jsonify({
             "error": "Email integration not available",
             "message": str(e)
+        }), 500
+
+@app.route('/api/email/receive', methods=['POST'])
+def receive_emails():
+    """Receive and decrypt emails via Gmail IMAP"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['email', 'password']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        # Import email integration
+        from email_integration import create_email_receiver
+        
+        # Get optional parameters
+        limit = data.get('limit', 10)
+        folder = data.get('folder', 'INBOX')
+        
+        # Receive emails
+        with create_email_receiver(data['email'], data['password']) as receiver:
+            result = receiver.fetch_emails(limit=limit, folder=folder)
+        
+        if result.success:
+            # Convert emails to JSON-serializable format
+            emails_data = []
+            for email in result.emails:
+                email_data = {
+                    "message_id": email.message_id,
+                    "sender": email.sender,
+                    "recipient": email.recipient,
+                    "subject": email.subject,
+                    "received_at": email.received_at,
+                    "is_qumail": email.is_qumail,
+                    "security_level": email.security_level,
+                    "decrypted_content": email.decrypted_content,
+                    "original_content": email.original_content,
+                    "encryption_metadata": email.encryption_metadata,
+                    "signature_verified": email.signature_verified,
+                    "error": email.error
+                }
+                emails_data.append(email_data)
+            
+            response_data = {
+                "success": True,
+                "emails": emails_data,
+                "total_count": result.total_count,
+                "folder": folder,
+                "message": f"Successfully received {result.total_count} emails"
+            }
+            
+            print(f"✅ Received {result.total_count} emails from {folder}")
+            return jsonify(response_data), 200
+        else:
+            return jsonify({
+                "success": False,
+                "error": result.error
+            }), 500
+            
+    except Exception as e:
+        print(f"❌ Email receive error: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/email/receive/qumail', methods=['POST'])
+def receive_qumail_emails():
+    """Receive only QuMail encrypted emails"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['email', 'password']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        # Import email integration
+        from email_integration import create_email_receiver
+        
+        # Get optional parameters
+        limit = data.get('limit', 10)
+        
+        # Receive QuMail emails only
+        with create_email_receiver(data['email'], data['password']) as receiver:
+            result = receiver.search_qumail_emails(limit=limit)
+        
+        if result.success:
+            # Convert emails to JSON-serializable format
+            emails_data = []
+            for email in result.emails:
+                email_data = {
+                    "message_id": email.message_id,
+                    "sender": email.sender,
+                    "recipient": email.recipient,
+                    "subject": email.subject,
+                    "received_at": email.received_at,
+                    "security_level": email.security_level,
+                    "decrypted_content": email.decrypted_content,
+                    "encryption_metadata": email.encryption_metadata,
+                    "signature_verified": email.signature_verified,
+                    "error": email.error
+                }
+                emails_data.append(email_data)
+            
+            response_data = {
+                "success": True,
+                "qumail_emails": emails_data,
+                "total_count": result.total_count,
+                "message": f"Successfully received {result.total_count} QuMail encrypted emails"
+            }
+            
+            print(f"✅ Received {result.total_count} QuMail emails")
+            return jsonify(response_data), 200
+        else:
+            return jsonify({
+                "success": False,
+                "error": result.error
+            }), 500
+            
+    except Exception as e:
+        print(f"❌ QuMail receive error: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
         }), 500
 
 @app.errorhandler(404)
