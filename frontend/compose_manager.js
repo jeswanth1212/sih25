@@ -94,6 +94,12 @@ class QuMailComposeManager {
             // Show sending state
             this.setSendingState(true);
 
+            // Show hybrid key animation based on security level
+            this.showHybridKeyAnimation(formData.securityLevel);
+
+            // Small delay to let animation start before sending
+            await new Promise(resolve => setTimeout(resolve, 500));
+
             // Send email via email integration
             console.log('📧 Sending real encrypted email...');
             const result = await window.emailIntegration.sendEncryptedEmail(formData);
@@ -163,6 +169,47 @@ class QuMailComposeManager {
     isValidEmail(email) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         return emailRegex.test(email);
+    }
+
+    /**
+     * Show hybrid key animation based on security level
+     */
+    showHybridKeyAnimation(securityLevel) {
+        if (!window.showHybridKeyAnimation) {
+            console.log('⚠️ Hybrid key animation not available');
+            return;
+        }
+
+        // Determine which key types to show based on security level
+        let keyTypes = [];
+        
+        switch(parseInt(securityLevel)) {
+            case 1: // Quantum Secure - QKD only
+                keyTypes = ['qkd'];
+                break;
+            case 2: // Quantum-aided AES - QKD + ECDH
+                keyTypes = ['qkd', 'ecdh'];
+                break;
+            case 3: // Hybrid PQC - ML-KEM + ECDH
+                keyTypes = ['mlkem', 'ecdh'];
+                break;
+            case 4: // No Quantum - Classical encryption
+                keyTypes = ['ecdh']; // Just show ECDH for classical
+                break;
+            default:
+                keyTypes = ['qkd', 'mlkem', 'ecdh']; // Full hybrid
+        }
+
+        console.log(`🎭 Triggering hybrid key animation for Level ${securityLevel} with keys:`, keyTypes);
+        window.showHybridKeyAnimation(keyTypes);
+
+        // Listen for animation completion to hide loading state properly
+        const handleAnimationComplete = () => {
+            console.log('✅ Hybrid animation completed');
+            document.removeEventListener('animationComplete', handleAnimationComplete);
+        };
+        
+        document.addEventListener('animationComplete', handleAnimationComplete);
     }
 
     /**
