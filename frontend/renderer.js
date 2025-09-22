@@ -27,11 +27,13 @@ class QuantumKeyManager {
             error_rate: Math.random() * 0.15, // 0-15% QBER (Quantum Bit Error Rate)
             generation_time: new Date().toISOString(),
             protocol: "BB84",
-            security_level: Math.floor(Math.random() * 4) + 1, // 1-4 security levels
-            entanglement_fidelity: 0.85 + Math.random() * 0.14, // 85-99% fidelity
+            security_level: 1, // Always Level 1 for QKD keys
+            fidelity: 0.85 + Math.random() * 0.14, // 85-99% fidelity
             key_extraction_efficiency: 0.7 + Math.random() * 0.29, // 70-99% efficiency
             distance_km: Math.floor(Math.random() * 100) + 1, // 1-100 km
             channel_loss_db: Math.random() * 10, // 0-10 dB loss
+            // Also include the old property names for backward compatibility
+            entanglement_fidelity: 0.85 + Math.random() * 0.14,
         };
     }
 
@@ -213,19 +215,28 @@ class QuantumKeyManager {
         const keyContainer = document.getElementById('quantum-keys-display');
         if (!keyContainer) return;
 
+        // Extract metadata with proper fallbacks for different API response formats
+        const metadata = qkdData.metadata || {};
+        const length = metadata.length || 256;
+        const errorRate = metadata.error_rate || 0;
+        const protocol = metadata.protocol || 'BB84';
+        const distance = metadata.distance_km || metadata.quantum_parameters?.distance_km || 'N/A';
+        const fidelity = metadata.fidelity || metadata.entanglement_fidelity || 0;
+        const securityLevel = metadata.security_level || 1;
+
         const keyElement = document.createElement('div');
         keyElement.className = 'glass-card p-4 mb-3 quantum-key-item animate-key-generation animate-violet-glow animate-quantum-transition';
         keyElement.innerHTML = `
             <div class="flex justify-between items-start mb-2">
                 <span class="text-violet-300 font-mono text-sm quantum-flow-line">${qkdData.key_id}</span>
-                <span class="security-level level-${qkdData.metadata.security_level} animate-security-pulse">
-                    Level ${qkdData.metadata.security_level}
+                <span class="security-level level-${securityLevel} animate-security-pulse">
+                    Level ${securityLevel}
                 </span>
             </div>
             <div class="text-xs text-gray-400 mb-2">
-                <div>Length: ${qkdData.metadata.length} bits | Error Rate: ${(qkdData.metadata.error_rate * 100).toFixed(2)}%</div>
-                <div>Protocol: ${qkdData.metadata.protocol} | Distance: ${qkdData.metadata.distance_km} km</div>
-                <div>Fidelity: ${(qkdData.metadata.entanglement_fidelity * 100).toFixed(1)}%</div>
+                <div>Length: ${length} bits | Error Rate: ${(errorRate * 100).toFixed(2)}%</div>
+                <div>Protocol: ${protocol} | Distance: ${distance} km</div>
+                <div>Fidelity: ${(fidelity * 100).toFixed(1)}%</div>
             </div>
             <div class="text-xs font-mono text-violet-200 break-all bg-black/30 p-2 rounded">
                 ${qkdData.key.substring(0, 32)}...

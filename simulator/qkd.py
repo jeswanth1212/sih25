@@ -221,6 +221,30 @@ class BB84QKDSimulator:
         
         return noisy_circuits
     
+    def add_measurement_noise(self, measurements: List[int], 
+                             noise_level: float = 0.05) -> List[int]:
+        """
+        Add realistic measurement noise to Bob's results
+        
+        Args:
+            measurements: Bob's original measurement results
+            noise_level: Probability of measurement error
+            
+        Returns:
+            Noisy measurement results
+        """
+        noisy_measurements = []
+        
+        for measurement in measurements:
+            # Add measurement error with given probability
+            if secrets.SystemRandom().random() < noise_level:
+                # Flip the measurement result
+                noisy_measurements.append(1 - measurement)
+            else:
+                noisy_measurements.append(measurement)
+        
+        return noisy_measurements
+    
     def generate_qkd_key(self, target_length: int = None, 
                         eavesdropper_present: bool = False) -> Dict:
         """
@@ -250,17 +274,22 @@ class BB84QKDSimulator:
         quantum_states = self.create_bb84_states(alice_bits, alice_bases)
         
         # Step 3: Add channel noise and potential eavesdropping
-        noise_level = 0.02  # 2% base channel noise
+        # Realistic QKD noise levels: 1-8% depending on distance and conditions
+        base_noise = 0.01 + (secrets.SystemRandom().random() * 0.07)  # 1-8% random base noise
         if eavesdropper_present:
-            noise_level += 0.08  # Additional 8% noise from Eve's interference
+            base_noise += 0.08 + (secrets.SystemRandom().random() * 0.12)  # Additional 8-20% from Eve
         
-        noisy_states = self.add_channel_noise(quantum_states, noise_level)
+        noisy_states = self.add_channel_noise(quantum_states, base_noise)
         
         # Step 4: Bob generates random measurement bases
         bob_bases = self.generate_random_bases(raw_length)
         
         # Step 5: Bob measures the quantum states
         bob_measurements = self.measure_bb84_states(noisy_states, bob_bases)
+        
+        # Step 5.5: Add realistic measurement noise (detector inefficiencies, etc.)
+        measurement_noise = 0.005 + (secrets.SystemRandom().random() * 0.015)  # 0.5-2% measurement noise
+        bob_measurements = self.add_measurement_noise(bob_measurements, measurement_noise)
         
         # Step 6: Public discussion and key sifting
         alice_sifted, bob_sifted = self.sift_key(alice_bits, alice_bases, 
@@ -290,15 +319,21 @@ class BB84QKDSimulator:
         sifting_efficiency = len(alice_sifted) / len(alice_bits) if alice_bits else 0
         quantum_fidelity = 1.0 - error_rate
         
-        # Determine security level based on error rate
-        if error_rate <= 0.05:
-            security_level = 1  # Excellent
-        elif error_rate <= 0.10:
-            security_level = 2  # Good
-        elif error_rate <= 0.15:
-            security_level = 3  # Acceptable
+        # Add some realistic variation to fidelity (detector inefficiencies, etc.)
+        fidelity_variation = (secrets.SystemRandom().random() - 0.5) * 0.02  # ±1% variation
+        quantum_fidelity = max(0.0, min(1.0, quantum_fidelity + fidelity_variation))
+        
+        # Determine security level based on error rate and fidelity
+        if error_rate <= 0.02 and quantum_fidelity >= 0.98:
+            security_level = 1  # Excellent - Perfect conditions
+        elif error_rate <= 0.05 and quantum_fidelity >= 0.95:
+            security_level = 2  # Good - Good conditions
+        elif error_rate <= 0.10 and quantum_fidelity >= 0.90:
+            security_level = 3  # Acceptable - Moderate conditions
+        elif error_rate <= 0.15 and quantum_fidelity >= 0.85:
+            security_level = 4  # Poor - Challenging conditions
         else:
-            security_level = 4  # Poor (should be rejected)
+            security_level = 5  # Critical - Should be rejected
         
         # Generate unique key ID
         timestamp = int(time.time() * 1000)
@@ -314,6 +349,7 @@ class BB84QKDSimulator:
                 "protocol": "BB84",
                 "security_level": security_level,
                 "fidelity": round(quantum_fidelity, 4),
+                "distance_km": round(10 + (secrets.randbelow(90)), 1),  # 10-100 km distance
                 "sifting_efficiency": round(sifting_efficiency, 4),
                 "raw_bits_generated": len(alice_bits),
                 "sifted_bits": len(alice_sifted),
@@ -323,7 +359,9 @@ class BB84QKDSimulator:
                 "status": "available",
                 "quantum_parameters": {
                     "basis_reconciliation_rate": round(sifting_efficiency, 4),
-                    "channel_noise_level": noise_level,
+                    "channel_noise_level": round(base_noise, 4),
+                    "measurement_noise_level": round(measurement_noise, 4),
+                    "total_noise_level": round(base_noise + measurement_noise, 4),
                     "eavesdropper_detected": error_rate > self.error_threshold,
                     "bb84_efficiency": round(len(final_key) / raw_length, 4)
                 }

@@ -227,7 +227,7 @@
   *Action*: Add to `encryption.py`, verify signatures.  
   *Contribution*: Adds PQC with novel authenticity.
 
-- [ ] **Task 31: Level 4: No Quantum Security**  
+- [x] **Task 31: Level 4: No Quantum Security**  
   *Description*: Add plaintext passthrough.  
   *Prompt*: “Generate Python code for a plaintext email option (Level 4: No Quantum Security).”  
   *Action*: Add to `encryption.py`.  
@@ -239,7 +239,7 @@
   *Action*: Add to `encryption.py`.  
   *Contribution*: Secures attachments.
 
-- [ ] **Task 33: Test Encryption**  
+- [x] **Task 33: Test Encryption**  
   *Description*: Verify all levels and signatures.  
   *Prompt*: “Generate pytest for hybrid encryption/decryption (Levels 1-4), including double signatures.”  
   *Action*: Save in `/tests/test_encryption.py`, run `pytest`.  
