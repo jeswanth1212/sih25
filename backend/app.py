@@ -304,6 +304,11 @@ def home():
                 "decrypt_message": "/api/decrypt", 
                 "get_encryption_levels": "/api/encrypt/levels"
             },
+            "email_endpoints": {
+                "send_email": "/api/email/send",
+                "send_test_email": "/api/email/test",
+                "email_status": "/api/email/status"
+            },
             "ecdh": {
                 "generate_keypair": "/api/ecdh/keypair",
                 "get_public_key": "/api/ecdh/public/<key_id>",
@@ -1396,6 +1401,160 @@ def test_hybrid_derivation():
         print(f"❌ Error testing hybrid derivation: {e}")
         return jsonify({
             "error": "Hybrid derivation test failed",
+            "message": str(e)
+        }), 500
+
+# ==================== EMAIL INTEGRATION ENDPOINTS ====================
+
+@app.route('/api/email/send', methods=['POST'])
+def send_encrypted_email():
+    """Send encrypted email via Gmail SMTP"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['sender_email', 'sender_password', 'recipient', 'subject', 'content', 'security_level']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        # Import email integration
+        from email_integration import create_email_sender, EmailMessage, SecurityLevel
+        
+        # Map security level
+        security_level_map = {
+            1: SecurityLevel.QUANTUM_SECURE,
+            2: SecurityLevel.QUANTUM_AIDED,
+            3: SecurityLevel.HYBRID_PQC,
+            4: SecurityLevel.NO_QUANTUM
+        }
+        
+        security_level = security_level_map.get(data['security_level'])
+        if not security_level:
+            return jsonify({"error": "Invalid security level. Must be 1-4"}), 400
+        
+        # Create email message
+        email_msg = EmailMessage(
+            sender=data['sender_email'],
+            recipient=data['recipient'],
+            subject=data['subject'],
+            content=data['content'],
+            attachments=data.get('attachments', []),
+            security_level=security_level
+        )
+        
+        # Send email
+        with create_email_sender(data['sender_email'], data['sender_password']) as sender:
+            result = sender.send_email(email_msg)
+        
+        if result.success:
+            response_data = {
+                "success": True,
+                "message_id": result.message_id,
+                "sent_at": result.sent_at,
+                "encryption_metadata": result.encryption_metadata,
+                "message": f"Email sent successfully with Level {data['security_level']} encryption"
+            }
+            print(f"✅ Email sent: {result.message_id}")
+            return jsonify(response_data), 200
+        else:
+            return jsonify({
+                "success": False,
+                "error": result.error
+            }), 500
+            
+    except Exception as e:
+        print(f"❌ Email send error: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/email/test', methods=['POST'])
+def send_test_email():
+    """Send a test email with specified security level"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['sender_email', 'sender_password', 'recipient']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        # Import email integration
+        from email_integration import create_email_sender, SecurityLevel
+        
+        # Get security level (default to Level 2)
+        security_level_map = {
+            1: SecurityLevel.QUANTUM_SECURE,
+            2: SecurityLevel.QUANTUM_AIDED,
+            3: SecurityLevel.HYBRID_PQC,
+            4: SecurityLevel.NO_QUANTUM
+        }
+        
+        security_level = security_level_map.get(data.get('security_level', 2), SecurityLevel.QUANTUM_AIDED)
+        
+        # Send test email
+        with create_email_sender(data['sender_email'], data['sender_password']) as sender:
+            result = sender.send_test_email(data['recipient'], security_level)
+        
+        if result.success:
+            response_data = {
+                "success": True,
+                "message_id": result.message_id,
+                "sent_at": result.sent_at,
+                "encryption_metadata": result.encryption_metadata,
+                "message": f"Test email sent successfully with Level {security_level.value} encryption"
+            }
+            print(f"✅ Test email sent: {result.message_id}")
+            return jsonify(response_data), 200
+        else:
+            return jsonify({
+                "success": False,
+                "error": result.error
+            }), 500
+            
+    except Exception as e:
+        print(f"❌ Test email error: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/email/status', methods=['GET'])
+def email_status():
+    """Get email integration status"""
+    try:
+        # Test basic imports
+        from email_integration import QuMailEmailSender
+        
+        status = {
+            "service": "QuMail Email Integration",
+            "status": "operational",
+            "supported_providers": ["Gmail"],
+            "supported_security_levels": {
+                "1": "Quantum Secure (OTP)",
+                "2": "Quantum-aided AES", 
+                "3": "Hybrid PQC",
+                "4": "No Quantum Security"
+            },
+            "features": [
+                "SMTP sending with TLS",
+                "Multi-level encryption",
+                "MIME multipart messages",
+                "Attachment support",
+                "App Password authentication"
+            ],
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
+        
+        return jsonify(status), 200
+        
+    except Exception as e:
+        print(f"❌ Email status error: {e}")
+        return jsonify({
+            "error": "Email integration not available",
             "message": str(e)
         }), 500
 
