@@ -112,6 +112,9 @@ class QuMailMultiLevelEncryption:
         # ML-KEM shared secret storage for Level 3 decryption
         self._mlkem_shared_secret_storage = {}
         
+        # AES key storage for Level 4 decryption
+        self._level4_key_storage = {}
+        
         # Import requests for API calls
         try:
             import requests
@@ -735,6 +738,11 @@ class QuMailMultiLevelEncryption:
             aes_key = secrets.token_bytes(32)  # Random 256-bit key
             iv = secrets.token_bytes(16)  # Random 128-bit IV
             
+            # Store AES key for decryption
+            level4_key_id = f"level4_aes_{message_id}_{int(datetime.now().timestamp() * 1000)}"
+            self._level4_key_storage[level4_key_id] = aes_key
+            logger.debug(f"Stored Level 4 AES key for decryption: {level4_key_id}")
+            
             cipher = Cipher(algorithms.AES(aes_key), modes.CBC(iv), backend=self.backend)
             encryptor = cipher.encryptor()
             
@@ -760,7 +768,7 @@ class QuMailMultiLevelEncryption:
             message_id=message_id,
             sender=sender,
             recipient=recipient,
-            key_ids={"level4_key": "random_or_none"},
+            key_ids={"level4_key_id": level4_key_id if algorithm == "AES-256-CBC" else "plaintext"},
             integrity_hash=hashlib.sha256(plaintext.encode('utf-8')).hexdigest(),
             quantum_resistant=quantum_resistant,
             etsi_compliant=False
@@ -795,14 +803,27 @@ class QuMailMultiLevelEncryption:
             plaintext = base64.b64decode(encrypted_message.ciphertext.encode('utf-8')).decode('utf-8')
         else:
             # Basic AES-256-CBC decryption
+            level4_key_id = encrypted_message.metadata.key_ids.get("level4_key_id")
+            
+            if not level4_key_id or level4_key_id not in self._level4_key_storage:
+                raise QuMailEncryptionError(f"Level 4 AES key not found: {level4_key_id}")
+            
+            aes_key = self._level4_key_storage[level4_key_id]
+            logger.debug(f"Retrieved Level 4 AES key: {level4_key_id}")
+            
             encrypted_data = base64.b64decode(encrypted_message.ciphertext.encode('utf-8'))
             iv = encrypted_data[:16]
             ciphertext = encrypted_data[16:]
             
-            # Note: In real implementation, key would need to be shared securely
-            # For demo, we cannot decrypt without the key
-            logger.warning("⚠️ Level 4 AES decryption requires shared key - returning placeholder")
-            plaintext = "[Level 4 AES decryption requires shared key]"
+            cipher = Cipher(algorithms.AES(aes_key), modes.CBC(iv), backend=self.backend)
+            decryptor = cipher.decryptor()
+            
+            padded_plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+            
+            # Remove padding
+            pad_length = padded_plaintext[-1]
+            plaintext_bytes = padded_plaintext[:-pad_length]
+            plaintext = plaintext_bytes.decode('utf-8')
         
         logger.info("✅ Level 4 decryption complete")
         return plaintext

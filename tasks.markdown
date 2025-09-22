@@ -215,13 +215,13 @@
   *Action*: Add to `encryption.py`, test with sample text.  
   *Contribution*: Provides quantum-secure encryption.
 
-- [ ] **Task 29: Level 2: Quantum-aided AES**  
+- [x] **Task 29: Level 2: Quantum-aided AES**  
   *Description*: Use hybrid-derived key (QKD + ECDH + ML-KEM, KDF2 SHA-256) from Firebase for AES-256.  
   *Prompt*: “Generate Python code for AES-256 encryption using a hybrid QKD-ML-KEM-ECDH key derived with KDF2 SHA-256 from Firebase.”  
   *Action*: Use `cryptography.fernet`, add to `encryption.py`.  
   *Contribution*: Combines hybrid key for AES.
 
-- [ ] **Task 30: Level 3: Hybrid PQC**  
+- [x] **Task 30: Level 3: Hybrid PQC**  
   *Description*: Implement ML-KEM-768 encapsulation with double signatures (EdDSA + ML-DSA-6x5).  
   *Prompt*: “Generate Python code for ML-KEM-768 encapsulation with EdDSA and ML-DSA-6x5 double signatures using liboqs-python and cryptography.py.”  
   *Action*: Add to `encryption.py`, verify signatures.  
