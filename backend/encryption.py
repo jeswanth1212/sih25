@@ -103,6 +103,9 @@ class QuMailMultiLevelEncryption:
         self.api_base_url = api_base_url
         self.backend = default_backend()
         
+        # QKD key storage for Level 1 OTP (in real system, keys would be shared via quantum channel)
+        self._qkd_key_storage = {}
+        
         # Import requests for API calls
         try:
             import requests
@@ -339,10 +342,15 @@ class QuMailMultiLevelEncryption:
         # Handle both API and simulated key formats
         if 'key' in qkd_key_data:
             qkd_key = bytes.fromhex(qkd_key_data['key'])
-        else:
+        elif 'key_material' in qkd_key_data:
             qkd_key = base64.b64decode(qkd_key_data['key_material'])
+        else:
+            raise QuMailEncryptionError("Invalid QKD key format")
         
         key_id = qkd_key_data['key_id']
+        
+        # Store the QKD key for decryption (in real system, this would be shared via quantum channel)
+        self._store_qkd_key_for_decryption(key_id, qkd_key)
         
         # Convert plaintext to bytes
         plaintext_bytes = plaintext.encode('utf-8')
@@ -395,25 +403,38 @@ class QuMailMultiLevelEncryption:
         """Decrypt Level 1: Quantum Secure (OTP) message"""
         logger.info("🔓 Level 1: Quantum Secure (OTP) decryption")
         
-        # Note: In real implementation, the QKD key would need to be shared
-        # between sender and receiver through quantum channel
-        # For demo, we'll simulate key recovery
-        
         ciphertext_bytes = base64.b64decode(encrypted_message.ciphertext.encode('utf-8'))
         
-        # Simulate key recovery (in real system, receiver would have the same QKD key)
+        # Get the QKD key ID from metadata
         qkd_key_id = encrypted_message.metadata.key_ids.get("qkd_key")
-        logger.warning("⚠️ Level 1 decryption requires pre-shared QKD key - using simulation")
         
-        # For demo purposes, generate a mock key (real system would use shared QKD key)
-        mock_key = secrets.token_bytes(len(ciphertext_bytes))
+        # Try to get the stored QKD key first (simulates quantum channel sharing)
+        qkd_key = self._get_stored_qkd_key(qkd_key_id)
         
-        # XOR decryption
-        plaintext_bytes = bytes(a ^ b for a, b in zip(ciphertext_bytes, mock_key))
+        if not qkd_key:
+            # Fallback: try to get key by ID from backend
+            qkd_key_data = self._get_qkd_key_by_id(qkd_key_id)
+            if qkd_key_data:
+                if 'key' in qkd_key_data:
+                    qkd_key = bytes.fromhex(qkd_key_data['key'])
+                elif 'key_material' in qkd_key_data:
+                    qkd_key = base64.b64decode(qkd_key_data['key_material'])
+        
+        if not qkd_key:
+            raise QuMailEncryptionError("QKD key not found for decryption")
+        
+        # Expand key if needed (same logic as encryption)
+        if len(ciphertext_bytes) > len(qkd_key):
+            expanded_key = self._expand_qkd_key(qkd_key, len(ciphertext_bytes))
+        else:
+            expanded_key = qkd_key[:len(ciphertext_bytes)]
+        
+        # XOR decryption (same as encryption for OTP)
+        plaintext_bytes = bytes(a ^ b for a, b in zip(ciphertext_bytes, expanded_key))
         
         try:
             plaintext = plaintext_bytes.decode('utf-8')
-            logger.info("✅ Level 1 decryption complete (simulated)")
+            logger.info("✅ Level 1 decryption complete")
             return plaintext
         except UnicodeDecodeError:
             raise QuMailEncryptionError("Level 1 decryption failed - invalid key or corrupted data")
@@ -755,6 +776,31 @@ class QuMailMultiLevelEncryption:
         except Exception as e:
             logger.warning(f"Failed to get QKD key: {e}")
             return self._get_simulated_qkd_key()
+    
+    def _get_qkd_key_by_id(self, key_id: str) -> Optional[Dict[str, Any]]:
+        """Get specific QKD key by ID from backend API"""
+        if not self.requests:
+            return self._get_simulated_qkd_key()
+        
+        try:
+            response = self.requests.get(f"{self.api_base_url}/api/qkd/key/{key_id}", timeout=10)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.warning(f"QKD API returned status {response.status_code} for key {key_id}")
+                return None
+        except Exception as e:
+            logger.warning(f"Failed to get QKD key {key_id}: {e}")
+            return None
+    
+    def _store_qkd_key_for_decryption(self, key_id: str, key_bytes: bytes):
+        """Store QKD key for decryption (simulates quantum channel sharing)"""
+        self._qkd_key_storage[key_id] = key_bytes
+        logger.debug(f"Stored QKD key {key_id} for decryption")
+    
+    def _get_stored_qkd_key(self, key_id: str) -> Optional[bytes]:
+        """Get stored QKD key for decryption"""
+        return self._qkd_key_storage.get(key_id)
     
     def _consume_qkd_key(self, key_id: str) -> bool:
         """Consume (delete) QKD key after use"""

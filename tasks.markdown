@@ -209,7 +209,7 @@
   *Action*: Save in `/backend/encryption.py`.  
   *Contribution*: Enables multi-level security.
 
-- [ ] **Task 28: Level 1: Quantum Secure (OTP)**  
+- [x] **Task 28: Level 1: Quantum Secure (OTP)**  
   *Description*: Implement XOR-based OTP using QKD key from Firebase.  
   *Prompt*: “Generate Python code for OTP encryption with a QKD key from Firebase Realtime Database.”  
   *Action*: Add to `encryption.py`, test with sample text.  
