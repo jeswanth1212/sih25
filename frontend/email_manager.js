@@ -240,8 +240,11 @@ class QuMailEmailManager {
                     try {
                         result = await this.emailIntegration.getSentEmails(limit);
                     } catch (sentError) {
-                        console.warn(`⚠️ Sent folder access failed, showing inbox instead:`, sentError.message);
-                        result = { emails: [], message: "Sent folder not accessible. Please check Gmail IMAP settings." };
+                        console.warn(`⚠️ Sent folder access failed:`, sentError.message);
+                        result = { 
+                            emails: [], 
+                            message: `Sent folder not accessible: ${sentError.message}. This is common with some Gmail configurations. Try accessing the folder directly in Gmail to enable it.` 
+                        };
                     }
                     break;
                 case 'drafts':
@@ -249,7 +252,10 @@ class QuMailEmailManager {
                         result = await this.emailIntegration.getDraftEmails(limit);
                     } catch (draftError) {
                         console.warn(`⚠️ Drafts folder access failed:`, draftError.message);
-                        result = { emails: [], message: "Drafts folder not accessible." };
+                        result = { 
+                            emails: [], 
+                            message: `Drafts folder not accessible: ${draftError.message}. This folder may not be enabled for IMAP access.` 
+                        };
                     }
                     break;
                 case 'trash':
@@ -257,7 +263,10 @@ class QuMailEmailManager {
                         result = await this.emailIntegration.getTrashEmails(limit);
                     } catch (trashError) {
                         console.warn(`⚠️ Trash folder access failed:`, trashError.message);
-                        result = { emails: [], message: "Trash folder not accessible." };
+                        result = { 
+                            emails: [], 
+                            message: `Trash folder not accessible: ${trashError.message}. This folder may not be enabled for IMAP access.` 
+                        };
                     }
                     break;
                 default:

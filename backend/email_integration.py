@@ -949,39 +949,165 @@ class QuMailEmailReceiver:
     
     def fetch_sent_emails(self, limit: int = 10) -> EmailReceiveResult:
         """Fetch emails from Sent folder"""
+        
+        # First ensure connection
+        if not self.imap_server:
+            if not self.connect_imap():
+                return EmailReceiveResult(
+                    success=False,
+                    error="Failed to connect to IMAP server"
+                )
+        
         # Try different possible sent folder names
-        for folder_name in ["[Gmail]/Sent Mail", "INBOX.Sent", "Sent", "Sent Items"]:
+        possible_sent_folders = [
+            "[Gmail]/Sent Mail",  # Gmail English
+            "[Gmail]/Mensagens enviadas",  # Gmail Portuguese
+            "[Gmail]/Elementos enviados",  # Gmail Spanish
+            "[Gmail]/Éléments envoyés",  # Gmail French
+            "[Gmail]/Gesendete Nachrichten",  # Gmail German
+            "INBOX.Sent",  # Some IMAP servers
+            "Sent",  # Standard
+            "Sent Items",  # Outlook/Exchange
+            "Sent Messages"  # Alternative
+        ]
+        
+        for folder_name in possible_sent_folders:
             try:
                 logger.info(f"Trying to access sent folder: {folder_name}")
-                result = self.fetch_emails(limit=limit, folder=folder_name)
-                if result.success:
-                    logger.info(f"Successfully accessed sent folder: {folder_name}")
-                    return result
+                
+                # Try to select the folder first to check if it exists
+                status, _ = self.imap_server.select(folder_name, readonly=True)
+                if status == 'OK':
+                    # Folder exists, now fetch emails
+                    result = self.fetch_emails(limit=limit, folder=folder_name)
+                    if result.success:
+                        logger.info(f"✅ Successfully accessed sent folder: {folder_name}")
+                        return result
+                else:
+                    logger.debug(f"Folder {folder_name} does not exist or cannot be accessed")
+                    
             except Exception as e:
                 logger.warning(f"Failed to access {folder_name}: {str(e)}")
                 continue
         
         # If all fail, try to list available folders to help debug
+        available_folders = []
         try:
-            self.mail.select("INBOX")  # Select a known folder first
-            folders = self.mail.list()[1]
-            logger.error(f"Available folders: {[folder.decode() for folder in folders]}")
+            self.imap_server.select("INBOX", readonly=True)  # Select inbox first
+            status, folders = self.imap_server.list()
+            if status == 'OK':
+                available_folders = [folder.decode() for folder in folders]
+                logger.error(f"Available folders: {available_folders}")
+                
+                # Look for any folder containing "sent" (case insensitive)
+                sent_candidates = [f for f in available_folders if 'sent' in f.lower()]
+                if sent_candidates:
+                    logger.info(f"Found potential sent folders: {sent_candidates}")
+                    # Try the first candidate
+                    folder_name = sent_candidates[0].split('"')[-2] if '"' in sent_candidates[0] else sent_candidates[0]
+                    try:
+                        result = self.fetch_emails(limit=limit, folder=folder_name)
+                        if result.success:
+                            logger.info(f"✅ Successfully used detected sent folder: {folder_name}")
+                            return result
+                    except Exception as e:
+                        logger.warning(f"Failed to use detected folder {folder_name}: {e}")
+                        
         except Exception as e:
             logger.error(f"Could not list folders: {e}")
         
-        # Return error with more info
+        # Return error with helpful info
+        error_msg = "Could not access sent folder. "
+        if available_folders:
+            error_msg += f"Available folders: {', '.join(available_folders[:5])}{'...' if len(available_folders) > 5 else ''}"
+        else:
+            error_msg += "Check Gmail IMAP settings and ensure 'Less secure app access' or App Passwords are configured."
+            
         return EmailReceiveResult(
             success=False,
-            error="Could not access sent folder - tried multiple folder names. Check Gmail IMAP settings."
+            error=error_msg
         )
     
     def fetch_trash_emails(self, limit: int = 10) -> EmailReceiveResult:
         """Fetch emails from Trash folder"""
-        return self.fetch_emails(limit=limit, folder="[Gmail]/Trash")
+        
+        # First ensure connection
+        if not self.imap_server:
+            if not self.connect_imap():
+                return EmailReceiveResult(
+                    success=False,
+                    error="Failed to connect to IMAP server"
+                )
+        
+        # Try different possible trash folder names
+        possible_trash_folders = [
+            "[Gmail]/Trash",  # Gmail English
+            "[Gmail]/Lixeira",  # Gmail Portuguese
+            "[Gmail]/Papelera",  # Gmail Spanish
+            "[Gmail]/Corbeille",  # Gmail French
+            "[Gmail]/Papierkorb",  # Gmail German
+            "INBOX.Trash",
+            "Trash",
+            "Deleted Items",
+            "Deleted"
+        ]
+        
+        for folder_name in possible_trash_folders:
+            try:
+                status, _ = self.imap_server.select(folder_name, readonly=True)
+                if status == 'OK':
+                    result = self.fetch_emails(limit=limit, folder=folder_name)
+                    if result.success:
+                        logger.info(f"✅ Successfully accessed trash folder: {folder_name}")
+                        return result
+            except Exception as e:
+                logger.warning(f"Failed to access trash folder {folder_name}: {str(e)}")
+                continue
+        
+        return EmailReceiveResult(
+            success=False,
+            error="Could not access trash folder - tried multiple folder names"
+        )
     
     def fetch_draft_emails(self, limit: int = 10) -> EmailReceiveResult:
         """Fetch emails from Drafts folder"""
-        return self.fetch_emails(limit=limit, folder="[Gmail]/Drafts")
+        
+        # First ensure connection
+        if not self.imap_server:
+            if not self.connect_imap():
+                return EmailReceiveResult(
+                    success=False,
+                    error="Failed to connect to IMAP server"
+                )
+        
+        # Try different possible drafts folder names
+        possible_draft_folders = [
+            "[Gmail]/Drafts",  # Gmail English
+            "[Gmail]/Rascunhos",  # Gmail Portuguese
+            "[Gmail]/Borradores",  # Gmail Spanish
+            "[Gmail]/Brouillons",  # Gmail French
+            "[Gmail]/Entwürfe",  # Gmail German
+            "INBOX.Drafts",
+            "Drafts",
+            "Draft"
+        ]
+        
+        for folder_name in possible_draft_folders:
+            try:
+                status, _ = self.imap_server.select(folder_name, readonly=True)
+                if status == 'OK':
+                    result = self.fetch_emails(limit=limit, folder=folder_name)
+                    if result.success:
+                        logger.info(f"✅ Successfully accessed drafts folder: {folder_name}")
+                        return result
+            except Exception as e:
+                logger.warning(f"Failed to access drafts folder {folder_name}: {str(e)}")
+                continue
+        
+        return EmailReceiveResult(
+            success=False,
+            error="Could not access drafts folder - tried multiple folder names"
+        )
     
     def fetch_all_mail(self, limit: int = 10) -> EmailReceiveResult:
         """Fetch emails from All Mail folder"""

@@ -21,23 +21,8 @@ class QuMailGUITester {
     }
 
     setupTestHandlers() {
-        // Override the Send button to use our test handler
-        const sendButton = document.getElementById('send-secure-btn') || document.querySelector('.bg-gradient-to-r');
-        if (sendButton) {
-            // Remove any existing event listeners
-            sendButton.replaceWith(sendButton.cloneNode(true));
-            const newSendButton = document.getElementById('send-secure-btn') || document.querySelector('.bg-gradient-to-r');
-            
-            newSendButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                console.log('🔥 Manual send button clicked!');
-                this.simulateEmailSending();
-            });
-            
-            console.log('✅ Send button handler attached successfully');
-        } else {
-            console.error('❌ Send button not found!');
-        }
+        // Test handlers disabled - real compose manager handles sending
+        console.log('⚠️ Test handlers disabled for production - using real email sending');
 
         // Add test controls to the interface
         this.addTestControls();

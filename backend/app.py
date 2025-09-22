@@ -1771,7 +1771,7 @@ def internal_error(error):
 
 @app.route('/api/email/folders', methods=['POST'])
 def list_email_folders():
-    """List available Gmail folders"""
+    """List available Gmail folders for debugging"""
     try:
         data = request.get_json()
         
@@ -1785,6 +1785,38 @@ def list_email_folders():
             
         with create_email_receiver(data['email'], data['password']) as receiver:
             result = receiver.list_folders()
+            
+            # Add helpful information about folder access
+            if result.get("success") and "folders" in result:
+                folders = result["folders"]
+                
+                # Detect common folder patterns
+                detected_folders = {
+                    "inbox": "INBOX",
+                    "sent": None,
+                    "drafts": None,
+                    "trash": None,
+                    "spam": None
+                }
+                
+                for folder in folders:
+                    folder_lower = folder.lower()
+                    if not detected_folders["sent"] and "sent" in folder_lower:
+                        detected_folders["sent"] = folder
+                    elif not detected_folders["drafts"] and ("draft" in folder_lower or "rascunho" in folder_lower):
+                        detected_folders["drafts"] = folder
+                    elif not detected_folders["trash"] and ("trash" in folder_lower or "lixeira" in folder_lower or "papelera" in folder_lower):
+                        detected_folders["trash"] = folder
+                    elif not detected_folders["spam"] and "spam" in folder_lower:
+                        detected_folders["spam"] = folder
+                
+                result["detected_folders"] = detected_folders
+                result["troubleshooting"] = {
+                    "missing_sent": detected_folders["sent"] is None,
+                    "missing_drafts": detected_folders["drafts"] is None,
+                    "missing_trash": detected_folders["trash"] is None,
+                    "tip": "If folders are missing, try accessing them in Gmail web interface first to enable IMAP access"
+                }
         
         return jsonify(result), 200 if result.get("success") else 500
         
