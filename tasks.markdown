@@ -252,19 +252,19 @@
   *Action*: Save in `/backend/email.py`, integrate with `encryption.py`.  
   *Contribution*: Enables secure email sending.
 
-- [ ] **Task 35: Receive Emails with imaplib**  
+- [x] **Task 35: Receive Emails with imaplib**  
   *Description*: Decrypt and verify signatures for Levels 1-3.  
   *Prompt*: “Generate Python code for Gmail IMAP with hybrid decryption and EdDSA/ML-DSA signature verification for Levels 1-3.”  
   *Action*: Add to `email.py`.  
   *Contribution*: Enables secure email receiving.
 
-- [ ] **Task 36: Add KM/Email Login**  
+- [x] **Task 36: Add KM/Email Login**  
   *Description*: Use App Passwords for Gmail (OAuth optional).  
   *Prompt*: “Generate Python code for Gmail App Password login in smtplib/imaplib.”  
   *Action*: Add login prompts in GUI and backend.  
   *Contribution*: Secures email access.
 
-- [ ] **Task 37: Test Email Flow**  
+- [x] **Task 37: Test Email Flow**  
   *Description*: Use dummy Gmail accounts for end-to-end testing.  
   *Prompt*: “Generate tests for end-to-end email send/receive with hybrid security (Levels 1-3).”  
   *Action*: Save in `/tests/test_email.py`, test with dummy accounts.  
