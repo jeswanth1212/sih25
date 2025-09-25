@@ -103,17 +103,23 @@ class QuMailMultiLevelEncryption:
         self.api_base_url = api_base_url
         self.backend = default_backend()
         
-        # QKD key storage for Level 1 OTP (in real system, keys would be shared via quantum channel)
-        self._qkd_key_storage = {}
+        # Firebase primary storage - NO MORE MEMORY STORAGE
+        # Keys are stored in Firebase with email-based indexing: /keys/users/{email}/{keyId}
+        # This ensures keys persist across server restarts and enables Chrome extension functionality
         
-        # Hybrid key storage for Level 2 decryption (in real system, keys would be shared securely)
-        self._hybrid_key_storage = {}
+        # Initialize Firebase connection for encryption operations
+        try:
+            import firebase_admin
+            from firebase_admin import db
+            self.firebase_ref = db.reference() if firebase_admin._apps else None
+        except Exception:
+            self.firebase_ref = None
         
-        # ML-KEM shared secret storage for Level 3 decryption
-        self._mlkem_shared_secret_storage = {}
-        
-        # AES key storage for Level 4 decryption
-        self._level4_key_storage = {}
+        if not self.firebase_ref:
+            logger.warning("⚠️ Firebase not available - keys will be lost on restart!")
+            logger.warning("⚠️ Chrome extension requires Firebase for persistent storage!")
+        else:
+            logger.info("✅ Encryption module using Firebase primary storage")
         
         # Import requests for API calls
         try:
@@ -131,6 +137,55 @@ class QuMailMultiLevelEncryption:
         self._init_mlkem_support()
         
         logger.info("🔐 QuMail Multi-Level Encryption Module initialized")
+    
+    # ==================== FIREBASE KEY MANAGEMENT ====================
+    
+    def _store_key_for_users(self, key_data, key_id, sender_email, recipient_email, key_type="encryption"):
+        """Store key for both sender and recipient in Firebase with email-based indexing"""
+        if not self.firebase_ref:
+            logger.error("❌ Firebase not available - key will be lost!")
+            return False
+        
+        try:
+            enhanced_key_data = {
+                **key_data,
+                "key_id": key_id,
+                "sender": sender_email,
+                "recipient": recipient_email,
+                "key_type": key_type,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Store for sender: /keys/users/{sender_email}/{key_id}
+            self.firebase_ref.child('keys').child('users').child(sender_email).child(key_id).set(enhanced_key_data)
+            
+            # Store for recipient: /keys/users/{recipient_email}/{key_id}
+            self.firebase_ref.child('keys').child('users').child(recipient_email).child(key_id).set(enhanced_key_data)
+            
+            logger.info(f"✅ {key_type} key {key_id} stored for {sender_email} and {recipient_email}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Firebase key storage error: {e}")
+            return False
+    
+    def _get_key_for_user(self, key_id, user_email):
+        """Retrieve key for a specific user from Firebase"""
+        if not self.firebase_ref:
+            logger.error("❌ Firebase not available - cannot retrieve key!")
+            return None
+        
+        try:
+            key_data = self.firebase_ref.child('keys').child('users').child(user_email).child(key_id).get()
+            if key_data:
+                logger.info(f"✅ Retrieved key {key_id} for {user_email}")
+                return key_data
+            else:
+                logger.warning(f"⚠️ Key {key_id} not found for {user_email}")
+                return None
+        except Exception as e:
+            logger.error(f"❌ Firebase key retrieval error: {e}")
+            return None
     
     def _derive_hybrid_key_with_real_pqc(self, message_id: str, qkd_key: dict, ecdh_keypair: dict, mlkem_shared_secret: bytes) -> dict:
         """Derive hybrid key using real PQC components"""
@@ -483,10 +538,19 @@ class QuMailMultiLevelEncryption:
         hybrid_key = base64.b64decode(hybrid_key_data['derived_key_b64'])
         key_ids = hybrid_key_data.get('component_info', {})
         
-        # Store hybrid key for decryption
+        # Store hybrid key for decryption in Firebase
         hybrid_key_id = hybrid_key_data['hybrid_key_id']
-        self._hybrid_key_storage[hybrid_key_id] = hybrid_key
-        logger.debug(f"Stored hybrid key for decryption: {hybrid_key_id}")
+        hybrid_key_data_with_key = {
+            **hybrid_key_data,
+            "derived_key_bytes": base64.b64encode(hybrid_key).decode('utf-8')
+        }
+        success = self._store_key_for_users(
+            hybrid_key_data_with_key, hybrid_key_id, sender, recipient, "hybrid"
+        )
+        if success:
+            logger.debug(f"Stored hybrid key for decryption in Firebase: {hybrid_key_id}")
+        else:
+            logger.error(f"Failed to store hybrid key: {hybrid_key_id}")
         
         # Use real AES-256-GCM encryption
         if self.real_pqc:
@@ -544,10 +608,13 @@ class QuMailMultiLevelEncryption:
         # Get hybrid key
         hybrid_key_id = encrypted_message.metadata.key_ids.get("hybrid_key")
         
-        # Check if we have the hybrid key stored locally (real PQC case)
-        if hybrid_key_id in self._hybrid_key_storage:
-            hybrid_key = self._hybrid_key_storage[hybrid_key_id]
-            logger.debug(f"Retrieved stored hybrid key: {hybrid_key_id}")
+        # Get hybrid key from Firebase (replace memory storage)
+        recipient_email = encrypted_message.metadata.recipient
+        hybrid_key_data = self._get_key_for_user(hybrid_key_id, recipient_email)
+        
+        if hybrid_key_data and 'derived_key_bytes' in hybrid_key_data:
+            hybrid_key = base64.b64decode(hybrid_key_data['derived_key_bytes'])
+            logger.debug(f"Retrieved hybrid key from Firebase: {hybrid_key_id}")
         else:
             # Try to get from API (fallback case)
             hybrid_key_data = self._get_hybrid_key(hybrid_key_id)
@@ -738,10 +805,19 @@ class QuMailMultiLevelEncryption:
             aes_key = secrets.token_bytes(32)  # Random 256-bit key
             iv = secrets.token_bytes(16)  # Random 128-bit IV
             
-            # Store AES key for decryption
+            # Store AES key for decryption in Firebase
             level4_key_id = f"level4_aes_{message_id}_{int(datetime.now().timestamp() * 1000)}"
-            self._level4_key_storage[level4_key_id] = aes_key
-            logger.debug(f"Stored Level 4 AES key for decryption: {level4_key_id}")
+            level4_key_data = {
+                "aes_key": base64.b64encode(aes_key).decode('utf-8'),
+                "algorithm": "AES-256-CBC"
+            }
+            success = self._store_key_for_users(
+                level4_key_data, level4_key_id, sender, recipient, "level4"
+            )
+            if success:
+                logger.debug(f"Stored Level 4 AES key in Firebase: {level4_key_id}")
+            else:
+                logger.error(f"Failed to store Level 4 key: {level4_key_id}")
             
             cipher = Cipher(algorithms.AES(aes_key), modes.CBC(iv), backend=self.backend)
             encryptor = cipher.encryptor()
@@ -804,12 +880,15 @@ class QuMailMultiLevelEncryption:
         else:
             # Basic AES-256-CBC decryption
             level4_key_id = encrypted_message.metadata.key_ids.get("level4_key_id")
+            recipient_email = encrypted_message.metadata.recipient
             
-            if not level4_key_id or level4_key_id not in self._level4_key_storage:
+            # Get Level 4 key from Firebase
+            level4_key_data = self._get_key_for_user(level4_key_id, recipient_email)
+            if not level4_key_data or 'aes_key' not in level4_key_data:
                 raise QuMailEncryptionError(f"Level 4 AES key not found: {level4_key_id}")
             
-            aes_key = self._level4_key_storage[level4_key_id]
-            logger.debug(f"Retrieved Level 4 AES key: {level4_key_id}")
+            aes_key = base64.b64decode(level4_key_data['aes_key'])
+            logger.debug(f"Retrieved Level 4 AES key from Firebase: {level4_key_id}")
             
             encrypted_data = base64.b64decode(encrypted_message.ciphertext.encode('utf-8'))
             iv = encrypted_data[:16]
@@ -862,14 +941,24 @@ class QuMailMultiLevelEncryption:
             logger.warning(f"Failed to get QKD key {key_id}: {e}")
             return None
     
-    def _store_qkd_key_for_decryption(self, key_id: str, key_bytes: bytes):
-        """Store QKD key for decryption (simulates quantum channel sharing)"""
-        self._qkd_key_storage[key_id] = key_bytes
-        logger.debug(f"Stored QKD key {key_id} for decryption")
+    def _store_qkd_key_for_decryption(self, key_id: str, key_bytes: bytes, sender_email: str, recipient_email: str):
+        """Store QKD key for decryption in Firebase (simulates quantum channel sharing)"""
+        qkd_key_data = {
+            "key_bytes": base64.b64encode(key_bytes).decode('utf-8'),
+            "algorithm": "QKD-BB84"
+        }
+        success = self._store_key_for_users(qkd_key_data, key_id, sender_email, recipient_email, "qkd")
+        if success:
+            logger.debug(f"Stored QKD key {key_id} in Firebase for decryption")
+        else:
+            logger.error(f"Failed to store QKD key: {key_id}")
     
-    def _get_stored_qkd_key(self, key_id: str) -> Optional[bytes]:
-        """Get stored QKD key for decryption"""
-        return self._qkd_key_storage.get(key_id)
+    def _get_stored_qkd_key(self, key_id: str, user_email: str) -> Optional[bytes]:
+        """Get stored QKD key for decryption from Firebase"""
+        key_data = self._get_key_for_user(key_id, user_email)
+        if key_data and 'key_bytes' in key_data:
+            return base64.b64decode(key_data['key_bytes'])
+        return None
     
     def _consume_qkd_key(self, key_id: str) -> bool:
         """Consume (delete) QKD key after use"""

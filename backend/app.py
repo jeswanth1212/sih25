@@ -140,16 +140,77 @@ except Exception as e:
     firebase_ref = None
 
 class QuantumKeyManager:
-    """ETSI GS QKD 014 Compliant Quantum Key Manager"""
+    """ETSI GS QKD 014 Compliant Quantum Key Manager with Firebase Primary Storage"""
     
     def __init__(self):
-        self.active_keys = {}
-        self.key_history = []
-        self.max_keys = 10  # Default max keys
+        # Firebase is now PRIMARY storage - remove memory storage
+        self.max_keys = 10  # Default max keys per user
         self.key_size_bits = QKD_CONFIG['key_length']
         
-    def generate_quantum_key(self):
-        """Generate a 256-bit quantum key using BB84 QKD simulation"""
+        # Verify Firebase connection for primary storage
+        if not firebase_ref:
+            print("❌ ERROR: Firebase required for key persistence!")
+            raise Exception("Firebase not available - keys will be lost!")
+        
+        print("✅ QuantumKeyManager using Firebase as PRIMARY storage")
+    
+    def store_key_for_users(self, key_data, sender_email, recipient_email, security_level):
+        """Store key for both sender and recipient using email-based indexing"""
+        try:
+            key_id = key_data["key_id"]
+            
+            # Enhanced key data with user metadata
+            enhanced_key_data = {
+                **key_data,
+                "sender": sender_email,
+                "recipient": recipient_email,
+                "security_level": security_level,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "key_type": "qkd"
+            }
+            
+            # Store for sender: /keys/users/{sender_email}/{key_id}
+            firebase_ref.child('keys').child('users').child(sender_email).child(key_id).set(enhanced_key_data)
+            
+            # Store for recipient: /keys/users/{recipient_email}/{key_id} 
+            firebase_ref.child('keys').child('users').child(recipient_email).child(key_id).set(enhanced_key_data)
+            
+            print(f"🔑 Key {key_id} stored for both {sender_email} and {recipient_email}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Firebase key storage error: {e}")
+            return False
+    
+    def get_key_for_user(self, key_id, user_email):
+        """Retrieve key for a specific user by email"""
+        try:
+            key_data = firebase_ref.child('keys').child('users').child(user_email).child(key_id).get()
+            if key_data:
+                print(f"✅ Retrieved key {key_id} for {user_email}")
+                return key_data
+            else:
+                print(f"⚠️ Key {key_id} not found for {user_email}")
+                return None
+        except Exception as e:
+            print(f"❌ Firebase key retrieval error: {e}")
+            return None
+    
+    def list_keys_for_user(self, user_email, limit=None):
+        """List all keys for a specific user"""
+        try:
+            keys = firebase_ref.child('keys').child('users').child(user_email).get() or {}
+            if limit:
+                # Return most recent keys
+                sorted_keys = sorted(keys.items(), key=lambda x: x[1].get('created_at', ''), reverse=True)
+                return dict(sorted_keys[:limit])
+            return keys
+        except Exception as e:
+            print(f"❌ Firebase key listing error: {e}")
+            return {}
+    
+    def generate_quantum_key(self, sender_email=None, recipient_email=None, security_level=1):
+        """Generate a 256-bit quantum key using BB84 QKD simulation with Firebase primary storage"""
         with key_lock:
             if bb84_simulator:
                 # Use real BB84 QKD simulation
@@ -164,20 +225,20 @@ class QuantumKeyManager:
                         # Generate another key if this one is not secure
                         key_data = bb84_simulator.generate_qkd_key(target_length=self.key_size_bits)
                     
-                    # Store in memory
-                    self.active_keys[key_data["key_id"]] = key_data
-                    
-                    # Store in Firebase if available
-                    if firebase_ref:
-                        try:
-                            firebase_ref.child('qkd_keys').child(key_data["key_id"]).set(key_data)
-                            print(f"🔑 BB84 Key {key_data['key_id']} stored in Firebase")
-                        except Exception as e:
-                            print(f"⚠️ Firebase storage error: {e}")
+                    # Store in Firebase as PRIMARY storage (no memory storage)
+                    if sender_email and recipient_email:
+                        success = self.store_key_for_users(key_data, sender_email, recipient_email, security_level)
+                        if not success:
+                            print("❌ Failed to store key in Firebase - key generation failed")
+                            return None
+                    else:
+                        # Fallback for backward compatibility - store without user association
+                        firebase_ref.child('qkd_keys').child(key_data["key_id"]).set(key_data)
+                        print(f"🔑 BB84 Key {key_data['key_id']} stored in Firebase (no user association)")
                     
                     metadata = key_data["metadata"]
-                    print(f"🔑 Generated BB84 QKD key: {key_data['key_id']} "
-                          f"(Level {metadata['security_level']}, "
+                    print(f"✅ Generated BB84 QKD key: {key_data['key_id']} "
+                          f"(Level {security_level}, "
                           f"{metadata['error_rate']*100:.1f}% error, "
                           f"{metadata['fidelity']:.3f} fidelity)")
                     
@@ -248,62 +309,101 @@ class QuantumKeyManager:
             print(f"🔑 Generated Mock QKD key: {key_id} (Level {security_level}, {error_rate*100:.1f}% error)")
             return key_data
     
-    def get_available_keys(self):
-        """Get all available keys"""
-        return list(self.active_keys.values())
+    def get_available_keys(self, user_email=None):
+        """Get all available keys from Firebase"""
+        if user_email:
+            # Get keys for specific user
+            return self.list_keys_for_user(user_email, limit=self.max_keys)
+        else:
+            # Get all keys (backward compatibility - not recommended for Chrome extension)
+            try:
+                all_keys = firebase_ref.child('qkd_keys').get() or {}
+                return list(all_keys.values())
+            except Exception as e:
+                print(f"❌ Firebase get all keys error: {e}")
+                return []
     
-    def consume_key(self, key_id):
-        """Consume (delete) a quantum key"""
+    def consume_key(self, key_id, user_email):
+        """Consume (delete) a quantum key for a specific user"""
         with key_lock:
-            if key_id in self.active_keys:
-                key_data = self.active_keys.pop(key_id)
+            try:
+                # Get key data from Firebase before deletion
+                key_data = self.get_key_for_user(key_id, user_email)
+                if not key_data:
+                    print(f"⚠️ Key {key_id} not found for user {user_email}")
+                    return False
                 
-                # Mark as consumed in Firebase
-                if firebase_ref:
-                    try:
-                        firebase_ref.child('qkd_keys').child(key_id).child('metadata').update({
-                            'status': 'consumed',
-                            'consumed_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-                        })
-                        # Move to history
-                        firebase_ref.child('qkd_history').child(key_id).set(key_data)
-                        firebase_ref.child('qkd_keys').child(key_id).delete()
-                        print(f"🔑 Key {key_id} consumed and moved to history")
-                    except Exception as e:
-                        print(f"⚠️ Firebase consume error: {e}")
+                # Mark as consumed and move to history
+                key_data['status'] = 'consumed'
+                key_data['consumed_at'] = datetime.now(timezone.utc).isoformat()
                 
-                self.key_history.append(key_data)
+                # Store in history
+                firebase_ref.child('key_history').child(key_id).set(key_data)
+                
+                # Remove from both sender and recipient
+                sender = key_data.get('sender')
+                recipient = key_data.get('recipient')
+                
+                if sender:
+                    firebase_ref.child('keys').child('users').child(sender).child(key_id).delete()
+                if recipient and recipient != sender:
+                    firebase_ref.child('keys').child('users').child(recipient).child(key_id).delete()
+                
+                print(f"✅ Key {key_id} consumed for {user_email} and moved to history")
                 return True
-            return False
+                
+            except Exception as e:
+                print(f"❌ Firebase key consumption error: {e}")
+                return False
     
-    def cleanup_expired_keys(self):
-        """Remove expired keys"""
-        current_time = datetime.now(timezone.utc)
-        expired_keys = []
-        
-        for key_id, key_data in self.active_keys.items():
-            expires_at = datetime.fromisoformat(key_data['metadata']['expires_at'].replace('Z', '+00:00'))
-            if current_time > expires_at:
-                expired_keys.append(key_id)
-        
-        for key_id in expired_keys:
-            print(f"⏰ Expiring key: {key_id}")
-            self.consume_key(key_id)
+    def cleanup_expired_keys(self, user_email=None):
+        """Remove expired keys from Firebase"""
+        try:
+            current_time = datetime.now(timezone.utc)
+            
+            if user_email:
+                # Cleanup keys for specific user
+                user_keys = self.list_keys_for_user(user_email)
+                for key_id, key_data in user_keys.items():
+                    if self._is_key_expired(key_data, current_time):
+                        print(f"⏰ Expiring key: {key_id} for user {user_email}")
+                        self.consume_key(key_id, user_email)
+            else:
+                # Cleanup all keys (resource intensive - use carefully)
+                try:
+                    all_users = firebase_ref.child('keys').child('users').get() or {}
+                    for email, user_keys in all_users.items():
+                        for key_id, key_data in user_keys.items():
+                            if self._is_key_expired(key_data, current_time):
+                                print(f"⏰ Expiring key: {key_id} for user {email}")
+                                self.consume_key(key_id, email)
+                except Exception as e:
+                    print(f"❌ Global cleanup error: {e}")
+                    
+        except Exception as e:
+            print(f"❌ Cleanup error: {e}")
+    
+    def _is_key_expired(self, key_data, current_time):
+        """Check if a key is expired"""
+        try:
+            if 'metadata' in key_data and 'expires_at' in key_data['metadata']:
+                expires_at = datetime.fromisoformat(key_data['metadata']['expires_at'].replace('Z', '+00:00'))
+                return current_time > expires_at
+            # If no expiration date, consider expired after 24 hours
+            if 'created_at' in key_data:
+                created_at = datetime.fromisoformat(key_data['created_at'].replace('Z', '+00:00'))
+                return (current_time - created_at).days >= 1
+        except Exception:
+            pass
+        return False
 
 # Initialize QKD Manager
 qkd_manager = QuantumKeyManager()
 
-# Generate initial keys (smaller for faster startup)
-print("🔄 Generating initial QKD keys for startup...")
-for i in range(3):
-    print(f"  Generating key {i+1}/3...")
-    if bb84_simulator:
-        # Generate smaller keys for faster startup
-        key_data = bb84_simulator.generate_qkd_key(target_length=64)  # 64-bit for speed
-        qkd_manager.active_keys[key_data["key_id"]] = key_data
-    else:
-        qkd_manager.generate_quantum_key()
-print("✅ Initial QKD keys generated")
+# Note: Initial keys are now generated on-demand for specific users
+# This improves startup time and aligns with email-based key indexing
+print("✅ QKD Manager initialized with Firebase primary storage")
+print("🔑 Keys will be generated on-demand for Chrome extension users")
 
 # Connect all managers to the hybrid derivator
 if hybrid_derivator:
