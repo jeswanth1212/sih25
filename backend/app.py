@@ -354,7 +354,7 @@ class QuantumKeyManager:
                 
             except Exception as e:
                 print(f"❌ Firebase key consumption error: {e}")
-                return False
+            return False
     
     def cleanup_expired_keys(self, user_email=None):
         """Remove expired keys from Firebase"""
@@ -2181,9 +2181,9 @@ if __name__ == '__main__':
             print("🔥 Running in production mode - use gunicorn")
         else:
             print(f"🌐 Development Server: http://localhost:{FLASK_CONFIG['port']}")
-            app.run(
-                host=FLASK_CONFIG['host'],
-                port=FLASK_CONFIG['port'],
-                debug=FLASK_CONFIG['debug']
-            )
+        app.run(
+            host=FLASK_CONFIG['host'],
+            port=FLASK_CONFIG['port'],
+            debug=FLASK_CONFIG['debug']
+        )
 
