@@ -87,31 +87,56 @@ except Exception as e:
     hybrid_derivator = None
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for Electron frontend
+
+# Configure CORS for Chrome extension and production
+cors_origins = [
+    "http://localhost:*",  # Development
+    "https://mail.google.com",  # Gmail
+    "chrome-extension://*",  # Chrome extensions
+]
+
+if os.environ.get('ENVIRONMENT') == 'production':
+    cors_origins.extend([
+        "https://qumail-backend.onrender.com",  # Production backend
+    ])
+
+CORS(app, origins=cors_origins, supports_credentials=True)
 
 # Thread safety for key operations
 key_lock = Lock()
 
 # Initialize Firebase
 try:
-    # Initialize Firebase with service account if available, otherwise use config
     if not firebase_admin._apps:
-        if os.path.exists('firebase-service-account.json'):
-            cred = credentials.Certificate('firebase-service-account.json')
+        # Production: Use service account from environment variable
+        if os.environ.get('FIREBASE_CREDENTIALS'):
+            import json
+            firebase_creds = json.loads(os.environ.get('FIREBASE_CREDENTIALS'))
+            cred = credentials.Certificate(firebase_creds)
             firebase_admin.initialize_app(cred, {
                 'databaseURL': FIREBASE_CONFIG['databaseURL']
             })
+            print("✅ Firebase initialized with environment credentials")
+        # Development: Use service account file
+        elif os.path.exists('backend/firebase-service-account.json'):
+            cred = credentials.Certificate('backend/firebase-service-account.json')
+            firebase_admin.initialize_app(cred, {
+                'databaseURL': FIREBASE_CONFIG['databaseURL']
+            })
+            print("✅ Firebase initialized with local service account")
         else:
-            # Use config approach for development
+            # Fallback: Use default credentials (not recommended)
             firebase_admin.initialize_app(options={
                 'databaseURL': FIREBASE_CONFIG['databaseURL']
             })
+            print("⚠️ Firebase initialized with default credentials")
     
     firebase_ref = db.reference()
-    print("✅ Firebase connected successfully")
+    print("✅ Firebase connected successfully as PRIMARY storage")
     
 except Exception as e:
-    print(f"⚠️ Firebase initialization warning: {e}")
+    print(f"❌ Firebase initialization failed: {e}")
+    print("⚠️ Firebase is required for Chrome extension - keys will be lost!")
     firebase_ref = None
 
 class QuantumKeyManager:
@@ -2045,15 +2070,20 @@ if __name__ == '__main__':
         from mtls_config import run_mtls_server
         run_mtls_server(app, host=FLASK_CONFIG['host'], port=args.mtls_port)
     else:
-        print("🚀 Starting QuMail QKD Manager...")
+        print("🚀 Starting QuMail Backend Server...")
         print(f"📡 ETSI GS QKD 014 Compliant API")
         print(f"🔑 Key size: {QKD_CONFIG['key_length']} bits")
         print(f"📊 Max keys: 10")
-        print(f"🌐 Server: http://localhost:{FLASK_CONFIG['port']}")
         
-        app.run(
-            host=FLASK_CONFIG['host'],
-            port=FLASK_CONFIG['port'],
-            debug=FLASK_CONFIG['debug']
-        )
+        # Production vs Development
+        if os.environ.get('ENVIRONMENT') == 'production':
+            print(f"🌐 Production Server: https://qumail-backend.onrender.com")
+            print("🔥 Running in production mode - use gunicorn")
+        else:
+            print(f"🌐 Development Server: http://localhost:{FLASK_CONFIG['port']}")
+            app.run(
+                host=FLASK_CONFIG['host'],
+                port=FLASK_CONFIG['port'],
+                debug=FLASK_CONFIG['debug']
+            )
 

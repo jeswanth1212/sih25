@@ -63,6 +63,9 @@ Thumbs.db
 # Firebase
 firebase-debug.log
 .firebase/
+firebase-service-account.json
+*-firebase-adminsdk-*.json
+qumail-*-firebase-adminsdk-*.json
 
 # Quantum Keys & Certificates (Security)
 *.key

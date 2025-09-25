@@ -49,9 +49,9 @@ class Config:
     
     # Flask Configuration
     FLASK_CONFIG = {
-        'host': '127.0.0.1',
-        'port': 5000,
-        'debug': True,  # Set to False in production
+        'host': '0.0.0.0',  # Allow external connections for Render
+        'port': int(os.environ.get('PORT', 5000)),  # Use Render's PORT env var
+        'debug': os.environ.get('ENVIRONMENT', 'development') != 'production',
         'ssl_context': None  # Will be configured for mTLS
     }
 
