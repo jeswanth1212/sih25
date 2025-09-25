@@ -154,6 +154,37 @@ class QuantumKeyManager:
         
         print("✅ QuantumKeyManager using Firebase as PRIMARY storage")
     
+    def get_active_key_count(self, user_email=None):
+        """Get count of active keys from Firebase"""
+        try:
+            if user_email:
+                # Count keys for specific user
+                user_keys = firebase_ref.child('keys').child('users').child(user_email).get() or {}
+                return len(user_keys)
+            else:
+                # Count all active keys (fallback - not recommended for production)
+                all_keys = firebase_ref.child('qkd_keys').get() or {}
+                return len(all_keys)
+        except Exception as e:
+            print(f"❌ Firebase key count error: {e}")
+            return 0
+    
+    def get_total_generated_count(self):
+        """Get total count of generated keys (active + history)"""
+        try:
+            # Count active keys
+            active_keys = firebase_ref.child('qkd_keys').get() or {}
+            active_count = len(active_keys)
+            
+            # Count history keys
+            history_keys = firebase_ref.child('key_history').get() or {}
+            history_count = len(history_keys)
+            
+            return active_count + history_count
+        except Exception as e:
+            print(f"❌ Firebase total count error: {e}")
+            return 0
+    
     def store_key_for_users(self, key_data, sender_email, recipient_email, security_level):
         """Store key for both sender and recipient using email-based indexing"""
         try:
@@ -295,16 +326,12 @@ class QuantumKeyManager:
                 }
             }
             
-            # Store in memory
-            self.active_keys[key_id] = key_data
-            
-            # Store in Firebase if available
-            if firebase_ref:
-                try:
-                    firebase_ref.child('qkd_keys').child(key_id).set(key_data)
-                    print(f"🔑 Mock Key {key_id} stored in Firebase")
-                except Exception as e:
-                    print(f"⚠️ Firebase storage error: {e}")
+            # Store in Firebase primary storage (no memory storage)
+            try:
+                firebase_ref.child('qkd_keys').child(key_id).set(key_data)
+                print(f"🔑 Mock Key {key_id} stored in Firebase")
+            except Exception as e:
+                print(f"⚠️ Firebase storage error: {e}")
             
             print(f"🔑 Generated Mock QKD key: {key_id} (Level {security_level}, {error_rate*100:.1f}% error)")
             return key_data
@@ -564,11 +591,12 @@ def generate_new_key():
     """Generate a new quantum key"""
     try:
         # Check if we're at max capacity
-        if len(qkd_manager.active_keys) >= qkd_manager.max_keys:
+        current_key_count = qkd_manager.get_active_key_count()
+        if current_key_count >= qkd_manager.max_keys:
             return jsonify({
                 "error": "Maximum key capacity reached",
                 "max_keys": qkd_manager.max_keys,
-                "current_keys": len(qkd_manager.active_keys)
+                "current_keys": current_key_count
             }), 429
         
         key_data = qkd_manager.generate_quantum_key()
@@ -592,10 +620,11 @@ def qkd_status():
         status = {
             "system": "QuMail QKD Manager",
             "status": "operational",
-            "active_keys": len(qkd_manager.active_keys),
+            "active_keys": qkd_manager.get_active_key_count(),
             "max_keys": qkd_manager.max_keys,
-            "total_generated": len(qkd_manager.key_history) + len(qkd_manager.active_keys),
+            "total_generated": qkd_manager.get_total_generated_count(),
             "firebase_connected": firebase_ref is not None,
+            "qkd_available": True,
             "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
         
